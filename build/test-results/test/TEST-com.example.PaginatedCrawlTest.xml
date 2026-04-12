@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.PaginatedCrawlTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-04-12T21:00:11.877Z" hostname="Mac" time="0.072">
-  <properties/>
-  <testcase name="paginated crawl fetches all pages at controlled rate()" classname="com.example.PaginatedCrawlTest" time="0.069"/>
-  <testcase name="paginated crawl returns valid data on each page()" classname="com.example.PaginatedCrawlTest" time="0.003"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
