@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.WarmupTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:50:08.019Z" hostname="Mac" time="10.891">
+<testsuite name="com.example.WarmupTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-04-12T21:00:18.672Z" hostname="Mac" time="0.028">
   <properties/>
-  <testcase name="warmup limiter eventually reaches full speed()" classname="com.example.WarmupTest" time="2.902"/>
-  <testcase name="warmup limiter starts slow and ramps up()" classname="com.example.WarmupTest" time="2.414"/>
-  <testcase name="all requests succeed during warmup period()" classname="com.example.WarmupTest" time="3.404"/>
-  <testcase name="warmup limiter with zero warmup behaves like smooth limiter()" classname="com.example.WarmupTest" time="2.17"/>
+  <testcase name="warmup limiter eventually reaches full speed()" classname="com.example.WarmupTest" time="0.015"/>
+  <testcase name="warmup limiter starts slow and ramps up()" classname="com.example.WarmupTest" time="0.006"/>
+  <testcase name="all requests succeed during warmup period()" classname="com.example.WarmupTest" time="0.004"/>
+  <testcase name="warmup limiter with zero warmup behaves like smooth limiter()" classname="com.example.WarmupTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

@@ -25,10 +25,10 @@ fun HTML.dashboardPage() {
                     label { htmlFor = "apiTarget"; +"API Target" }
                     select {
                         id = "apiTarget"
-                        onChange = "onConfigChange()"
+                        onChange = "onApiTargetChange(); onConfigChange()"
+                        option { value = "none"; +"Simulated (recommended)" }
                         option { value = "catfact"; +"catfact.ninja" }
                         option { value = "jsonplaceholder"; +"JSONPlaceholder" }
-                        option { value = "none"; +"None (simulated)" }
                     }
                 }
 
@@ -117,6 +117,53 @@ fun HTML.dashboardPage() {
                         onInput = "onConfigChange()"
                     }
                 }
+
+                // Simulated-upstream tuning (visible when API Target = Simulated)
+                div("control-group sim-only") {
+                    label { htmlFor = "serviceTime"; +"Service Time (ms)" }
+                    input {
+                        id = "serviceTime"
+                        type = InputType.number
+                        value = "50"
+                        min = "0"
+                        max = "5000"
+                        onInput = "onConfigChange()"
+                    }
+                }
+                div("control-group sim-only") {
+                    label { htmlFor = "jitter"; +"Jitter (ms)" }
+                    input {
+                        id = "jitter"
+                        type = InputType.number
+                        value = "20"
+                        min = "0"
+                        max = "2000"
+                        onInput = "onConfigChange()"
+                    }
+                }
+                div("control-group sim-only") {
+                    label { htmlFor = "failureRate"; +"Failure Rate (%)" }
+                    input {
+                        id = "failureRate"
+                        type = InputType.number
+                        value = "0"
+                        min = "0"
+                        max = "100"
+                        step = "1"
+                        onInput = "onConfigChange()"
+                    }
+                }
+                div("control-group") {
+                    label { htmlFor = "workerConcurrency"; +"Workers" }
+                    input {
+                        id = "workerConcurrency"
+                        type = InputType.number
+                        value = "50"
+                        min = "1"
+                        max = "500"
+                        onInput = "onConfigChange()"
+                    }
+                }
             }
 
             // Request rate slider
@@ -137,14 +184,22 @@ fun HTML.dashboardPage() {
                     onInput = "onRateChange()"
                 }
                 div("slider-ticks") {
-                    // 10^0=1, 10^1=10, 10^2=100, 10^3=1000, 10^4=10000
-                    // slider positions: 0, 25, 50, 75, 100
                     span { attributes["data-label"] = "1"; +"" }
                     span { attributes["data-label"] = "10"; +"" }
                     span { attributes["data-label"] = "100"; +"" }
                     span { attributes["data-label"] = "1k"; +"" }
                     span { attributes["data-label"] = "10k"; +"" }
                 }
+            }
+
+            // Presets
+            div("presets") {
+                span("presets-label") { +"Presets" }
+                button { classes = setOf("preset-btn"); onClick = "applyPreset('burst-overload')"; +"Burst Overload" }
+                button { classes = setOf("preset-btn"); onClick = "applyPreset('queue-backlog')"; +"Queue Backlog" }
+                button { classes = setOf("preset-btn"); onClick = "applyPreset('warmup-ramp')"; +"Warm-up Ramp" }
+                button { classes = setOf("preset-btn"); onClick = "applyPreset('composite-tiers')"; +"Composite Tiers" }
+                button { classes = setOf("preset-btn"); onClick = "applyPreset('small-pool')"; +"Small Pool + Queue" }
             }
 
             // Action buttons
@@ -168,28 +223,18 @@ fun HTML.dashboardPage() {
                 }
             }
 
-            // Stats
+            // Stats — two rows of 5
             div("stats") {
-                div("stat-card") {
-                    div("stat-value") { id = "statQueued"; +"0" }
-                    div("stat-label") { +"Queued" }
-                }
-                div("stat-card") {
-                    div("stat-value") { id = "statCompleted"; +"0" }
-                    div("stat-label") { +"Completed" }
-                }
-                div("stat-card") {
-                    div("stat-value") { id = "statDenied"; +"0" }
-                    div("stat-label") { +"Denied" }
-                }
-                div("stat-card") {
-                    div("stat-value") { id = "statThroughput"; +"0" }
-                    div("stat-label") { +"Throughput/s" }
-                }
-                div("stat-card") {
-                    div("stat-value") { id = "statLatency"; +"0ms" }
-                    div("stat-label") { +"Avg Latency" }
-                }
+                div("stat-card") { div("stat-value") { id = "statQueued"; +"0" }; div("stat-label") { +"Queued" } }
+                div("stat-card") { div("stat-value") { id = "statInFlight"; +"0" }; div("stat-label") { +"In-Flight" } }
+                div("stat-card") { div("stat-value") { id = "statCompleted"; +"0" }; div("stat-label") { +"Completed" } }
+                div("stat-card") { div("stat-value") { id = "statDenied"; +"0" }; div("stat-label") { +"Denied" } }
+                div("stat-card") { div("stat-value") { id = "statThroughput"; +"0" }; div("stat-label") { +"Throughput/s" } }
+                div("stat-card") { div("stat-value") { id = "statAcceptRate"; +"0" }; div("stat-label") { +"Accept/s" } }
+                div("stat-card") { div("stat-value") { id = "statRejectRate"; +"0" }; div("stat-label") { +"Reject/s" } }
+                div("stat-card") { div("stat-value") { id = "statLatency"; +"0ms" }; div("stat-label") { +"Avg Latency" } }
+                div("stat-card") { div("stat-value") { id = "statP50"; +"0ms" }; div("stat-label") { +"P50 Latency" } }
+                div("stat-card") { div("stat-value") { id = "statP95"; +"0ms" }; div("stat-label") { +"P95 Latency" } }
             }
 
             // Chart
@@ -223,7 +268,7 @@ private val CSS = """
         color: #e1e4e8;
         min-height: 100vh;
     }
-    .container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
     h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
     .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 28px; }
 
@@ -243,7 +288,7 @@ private val CSS = """
 
     .slider-section {
         background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-        padding: 20px; margin-bottom: 20px;
+        padding: 20px; margin-bottom: 16px;
     }
     .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .slider-header label { font-size: 14px; font-weight: 500; }
@@ -259,26 +304,37 @@ private val CSS = """
         -webkit-appearance: none; width: 20px; height: 20px;
         background: #58a6ff; border-radius: 50%; cursor: pointer;
     }
-    .slider-ticks {
-        display: flex; justify-content: space-between; margin-top: 8px; position: relative;
-    }
+    .slider-ticks { display: flex; justify-content: space-between; margin-top: 8px; position: relative; }
     .slider-ticks span {
         display: flex; flex-direction: column; align-items: center; width: 0; font-size: 11px; color: #484f58;
     }
     .slider-ticks span::before {
         content: ''; display: block; width: 1px; height: 8px; background: #484f58; margin-bottom: 4px;
     }
-    .slider-ticks span::after {
-        content: attr(data-label); white-space: nowrap;
+    .slider-ticks span::after { content: attr(data-label); white-space: nowrap; }
+
+    .presets {
+        display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+        background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+        padding: 14px 20px; margin-bottom: 16px;
     }
+    .presets-label {
+        font-size: 12px; font-weight: 600; color: #8b949e;
+        text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px;
+    }
+    .preset-btn {
+        background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+        padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
+    }
+    .preset-btn:hover { background: #30363d; border-color: #58a6ff; }
 
     .actions { display: flex; gap: 10px; margin-bottom: 20px; }
     button {
         padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px;
         font-weight: 600; cursor: pointer; transition: all 0.15s;
     }
-    button:not(.secondary) { background: #238636; color: #fff; }
-    button:not(.secondary):hover { background: #2ea043; }
+    #startBtn { background: #238636; color: #fff; }
+    #startBtn:hover { background: #2ea043; }
     button.secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
     button.secondary:hover { background: #30363d; }
 
@@ -288,19 +344,24 @@ private val CSS = """
     }
     .stat-card {
         background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-        padding: 16px; text-align: center;
+        padding: 14px; text-align: center;
     }
-    .stat-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .stat-label { font-size: 12px; color: #8b949e; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-card:nth-child(1) .stat-value { color: #f0883e; }
-    .stat-card:nth-child(2) .stat-value { color: #3fb950; }
-    .stat-card:nth-child(3) .stat-value { color: #f85149; }
-    .stat-card:nth-child(4) .stat-value { color: #58a6ff; }
-    .stat-card:nth-child(5) .stat-value { color: #bc8cff; }
+    .stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    #statQueued { color: #f0883e; }
+    #statInFlight { color: #ffab70; }
+    #statCompleted { color: #3fb950; }
+    #statDenied { color: #f85149; }
+    #statThroughput { color: #58a6ff; }
+    #statAcceptRate { color: #3fb950; }
+    #statRejectRate { color: #f85149; }
+    #statLatency { color: #bc8cff; }
+    #statP50 { color: #bc8cff; }
+    #statP95 { color: #d2a8ff; }
 
     .chart-container {
         background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-        padding: 20px; height: 380px;
+        padding: 20px; height: 400px;
     }
     canvas { width: 100% !important; height: 100% !important; }
 
@@ -320,11 +381,9 @@ private val CSS = """
     .log-container {
         font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
         font-size: 12px; line-height: 1.6; padding: 12px 0;
-        max-height: 460px; overflow-y: auto;
+        max-height: 380px; overflow-y: auto;
     }
-    .log-entry {
-        padding: 2px 20px; display: flex; gap: 12px; align-items: baseline;
-    }
+    .log-entry { padding: 2px 20px; display: flex; gap: 12px; align-items: baseline; }
     .log-entry:hover { background: #1c2128; }
     .log-time { color: #484f58; min-width: 60px; }
     .log-status { font-weight: 600; min-width: 32px; }
@@ -334,7 +393,7 @@ private val CSS = """
     .log-latency { color: #bc8cff; min-width: 55px; text-align: right; }
     .log-body { color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    @media (max-width: 640px) {
+    @media (max-width: 900px) {
         .stats { grid-template-columns: repeat(2, 1fr); }
         .controls { flex-direction: column; }
         .control-group input, .control-group select { width: 100%; }
@@ -355,27 +414,14 @@ function initChart() {
         data: {
             labels: [],
             datasets: [
-                {
-                    label: 'Queued',
-                    data: [],
-                    borderColor: '#f0883e',
-                    backgroundColor: '#f0883e22',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                },
-                {
-                    label: 'Throughput/s',
-                    data: [],
-                    borderColor: '#58a6ff',
-                    backgroundColor: '#58a6ff22',
-                    fill: false,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                    yAxisID: 'y1',
-                },
+                { label: 'Queued', data: [], borderColor: '#f0883e', backgroundColor: '#f0883e22',
+                  fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                { label: 'In-Flight', data: [], borderColor: '#ffab70', backgroundColor: '#ffab7022',
+                  fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                { label: 'Throughput/s', data: [], borderColor: '#58a6ff', backgroundColor: '#58a6ff22',
+                  fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y1' },
+                { label: 'P95 Latency (ms)', data: [], borderColor: '#d2a8ff', backgroundColor: '#d2a8ff22',
+                  fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4, 4], yAxisID: 'y2' },
             ],
         },
         options: {
@@ -390,7 +436,7 @@ function initChart() {
                     grid: { color: '#21262d' },
                 },
                 y: {
-                    title: { display: true, text: 'Queued', color: '#8b949e' },
+                    title: { display: true, text: 'Queue depth', color: '#8b949e' },
                     ticks: { color: '#484f58' },
                     grid: { color: '#21262d' },
                     beginAtZero: true,
@@ -402,6 +448,7 @@ function initChart() {
                     grid: { drawOnChartArea: false },
                     beginAtZero: true,
                 },
+                y2: { display: false, beginAtZero: true },
             },
             plugins: {
                 legend: { labels: { color: '#c9d1d9', usePointStyle: true, pointStyle: 'line' } },
@@ -426,24 +473,40 @@ function getConfig() {
 function sliderToRate(val01) {
     return Math.round(Math.pow(10, val01 / 100 * 4));
 }
+function rateToSlider(rate) {
+    return Math.log10(Math.max(1, rate)) / 4 * 100;
+}
 
 function getRate() {
     const slider = parseFloat(document.getElementById('rateSlider').value) || 0;
     return Math.max(1, sliderToRate(slider));
 }
+function getApiTarget() { return document.getElementById('apiTarget').value; }
+function getOverflowMode() { return document.getElementById('overflowMode').value; }
 
-function getApiTarget() {
-    return document.getElementById('apiTarget').value;
-}
-
-function getOverflowMode() {
-    return document.getElementById('overflowMode').value;
+function buildStartMessage(action) {
+    return {
+        action,
+        config: getConfig(),
+        requestsPerSecond: getRate(),
+        apiTarget: getApiTarget(),
+        overflowMode: getOverflowMode(),
+        serviceTimeMs: parseInt(document.getElementById('serviceTime').value) || 50,
+        jitterMs: parseInt(document.getElementById('jitter').value) || 0,
+        failureRate: (parseFloat(document.getElementById('failureRate').value) || 0) / 100,
+        workerConcurrency: parseInt(document.getElementById('workerConcurrency').value) || 50,
+    };
 }
 
 function onTypeChange() {
     const type = document.getElementById('limiterType').value;
     document.querySelectorAll('.smooth-only').forEach(el => el.classList.toggle('hidden', type !== 'smooth'));
     document.querySelectorAll('.composite-only').forEach(el => el.classList.toggle('hidden', type !== 'composite'));
+}
+
+function onApiTargetChange() {
+    const target = document.getElementById('apiTarget').value;
+    document.querySelectorAll('.sim-only').forEach(el => el.classList.toggle('hidden', target !== 'none'));
 }
 
 let configDebounce = null;
@@ -453,7 +516,7 @@ function onConfigChange() {
     configDebounce = setTimeout(() => {
         lastCompleted = 0;
         lastTime = 0;
-        ws.send(JSON.stringify({ action: 'updateRate', config: getConfig(), requestsPerSecond: getRate(), apiTarget: getApiTarget(), overflowMode: getOverflowMode() }));
+        ws.send(JSON.stringify(buildStartMessage('updateRate')));
     }, 300);
 }
 
@@ -461,6 +524,73 @@ function onRateChange() {
     const rate = getRate();
     document.getElementById('rateValue').textContent = rate.toLocaleString() + ' req/s';
     onConfigChange();
+}
+
+const PRESETS = {
+    'burst-overload': {
+        _desc: '20 req/s into 5/s bursty, reject mode — watch denied climb',
+        limiterType: 'bursty', permits: 5, perSeconds: 1,
+        overflowMode: 'reject', rate: 20,
+        apiTarget: 'none', serviceTime: 50, jitter: 20, failureRate: 0,
+        workerConcurrency: 50,
+    },
+    'queue-backlog': {
+        _desc: '20 req/s into 5/s bursty, queue mode — watch queue build',
+        limiterType: 'bursty', permits: 5, perSeconds: 1,
+        overflowMode: 'queue', rate: 20,
+        apiTarget: 'none', serviceTime: 50, jitter: 20, failureRate: 0,
+        workerConcurrency: 50,
+    },
+    'warmup-ramp': {
+        _desc: 'Smooth limiter with 5s warmup — throughput ramps up gradually',
+        limiterType: 'smooth', permits: 10, perSeconds: 1, warmup: 5,
+        overflowMode: 'queue', rate: 20,
+        apiTarget: 'none', serviceTime: 30, jitter: 10, failureRate: 0,
+        workerConcurrency: 50,
+    },
+    'composite-tiers': {
+        _desc: '10/s burst + 30/min sustained, reject mode',
+        limiterType: 'composite', permits: 10, perSeconds: 1,
+        secondaryPermits: 30, secondaryPer: 60,
+        overflowMode: 'reject', rate: 30,
+        apiTarget: 'none', serviceTime: 50, jitter: 20, failureRate: 0,
+        workerConcurrency: 50,
+    },
+    'small-pool': {
+        _desc: '100 req/s → 20/s limiter, only 5 workers — queue + worker contention',
+        limiterType: 'bursty', permits: 20, perSeconds: 1,
+        overflowMode: 'queue', rate: 100,
+        apiTarget: 'none', serviceTime: 100, jitter: 30, failureRate: 0,
+        workerConcurrency: 5,
+    },
+};
+
+function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    document.getElementById('limiterType').value = p.limiterType;
+    document.getElementById('permits').value = p.permits;
+    document.getElementById('perSeconds').value = p.perSeconds;
+    if (p.warmup !== undefined) document.getElementById('warmup').value = p.warmup;
+    if (p.secondaryPermits !== undefined) document.getElementById('secondaryPermits').value = p.secondaryPermits;
+    if (p.secondaryPer !== undefined) document.getElementById('secondaryPer').value = p.secondaryPer;
+    document.getElementById('overflowMode').value = p.overflowMode;
+    document.getElementById('apiTarget').value = p.apiTarget;
+    document.getElementById('serviceTime').value = p.serviceTime;
+    document.getElementById('jitter').value = p.jitter;
+    document.getElementById('failureRate').value = Math.round((p.failureRate || 0) * 100);
+    document.getElementById('workerConcurrency').value = p.workerConcurrency;
+    document.getElementById('rateSlider').value = rateToSlider(p.rate);
+    document.getElementById('rateValue').textContent = p.rate.toLocaleString() + ' req/s';
+    onTypeChange();
+    onApiTargetChange();
+    clearChart();
+    // If already running, update; otherwise start.
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(buildStartMessage('updateRate')));
+    } else {
+        startSimulation();
+    }
 }
 
 function startSimulation() {
@@ -472,13 +602,7 @@ function startSimulation() {
     ws = new WebSocket((loc.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + loc.host + '/ws');
 
     ws.onopen = () => {
-        ws.send(JSON.stringify({
-            action: 'start',
-            config: getConfig(),
-            requestsPerSecond: getRate(),
-            apiTarget: getApiTarget(),
-            overflowMode: getOverflowMode(),
-        }));
+        ws.send(JSON.stringify(buildStartMessage('start')));
     };
 
     ws.onmessage = (event) => {
@@ -494,7 +618,6 @@ function startSimulation() {
         // Throughput: completed delta / time delta
         const timeDelta = msg.timeMs - lastTime;
         const completedDelta = msg.completed - lastCompleted;
-        // Skip first point after start/restart to avoid spike from initial burst
         const throughput = (lastTime > 0 && timeDelta > 0)
             ? (completedDelta / (timeDelta / 1000)).toFixed(1)
             : 0;
@@ -503,15 +626,22 @@ function startSimulation() {
 
         // Update stats
         document.getElementById('statQueued').textContent = msg.queued;
+        document.getElementById('statInFlight').textContent = msg.inFlight;
         document.getElementById('statCompleted').textContent = msg.completed;
         document.getElementById('statDenied').textContent = msg.denied;
         document.getElementById('statThroughput').textContent = throughput;
+        document.getElementById('statAcceptRate').textContent = msg.acceptRate.toFixed(1);
+        document.getElementById('statRejectRate').textContent = msg.rejectRate.toFixed(1);
         document.getElementById('statLatency').textContent = msg.avgLatencyMs + 'ms';
+        document.getElementById('statP50').textContent = msg.p50LatencyMs + 'ms';
+        document.getElementById('statP95').textContent = msg.p95LatencyMs + 'ms';
 
         // Update chart — keep last 150 points
         chart.data.labels.push(timeSec);
         chart.data.datasets[0].data.push(msg.queued);
-        chart.data.datasets[1].data.push(parseFloat(throughput));
+        chart.data.datasets[1].data.push(msg.inFlight);
+        chart.data.datasets[2].data.push(parseFloat(throughput));
+        chart.data.datasets[3].data.push(msg.p95LatencyMs);
 
         if (chart.data.labels.length > 150) {
             chart.data.labels.shift();
@@ -536,11 +666,13 @@ function clearChart() {
         chart.data.datasets.forEach(ds => { ds.data = []; });
         chart.update();
     }
-    document.getElementById('statQueued').textContent = '0';
-    document.getElementById('statCompleted').textContent = '0';
-    document.getElementById('statDenied').textContent = '0';
-    document.getElementById('statThroughput').textContent = '0';
-    document.getElementById('statLatency').textContent = '0ms';
+    ['statQueued', 'statInFlight', 'statCompleted', 'statDenied', 'statThroughput',
+     'statAcceptRate', 'statRejectRate'].forEach(id => {
+        document.getElementById(id).textContent = '0';
+    });
+    ['statLatency', 'statP50', 'statP95'].forEach(id => {
+        document.getElementById(id).textContent = '0ms';
+    });
     document.getElementById('responseLog').innerHTML = '';
     document.getElementById('logCount').textContent = '0';
     lastCompleted = 0;
@@ -565,12 +697,9 @@ function appendResponseLog(msg) {
     logCount++;
     document.getElementById('logCount').textContent = logCount;
 
-    // Keep only last 20 entries
     while (log.children.length > 20) {
         log.removeChild(log.firstChild);
     }
-
-    // Auto-scroll to bottom
     log.scrollTop = log.scrollHeight;
 }
 
@@ -583,5 +712,6 @@ function escapeHtml(str) {
 document.addEventListener('DOMContentLoaded', () => {
     initChart();
     onTypeChange();
+    onApiTargetChange();
 });
 """.trimIndent()

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.MultiApiAggregationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:50:03.417Z" hostname="Mac" time="2.07">
+<testsuite name="com.example.MultiApiAggregationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-04-12T21:00:11.866Z" hostname="Mac" time="0.01">
   <properties/>
-  <testcase name="multiple APIs fetched concurrently with independent rate limiters()" classname="com.example.MultiApiAggregationTest" time="0.835"/>
-  <testcase name="independent limiters do not block each other()" classname="com.example.MultiApiAggregationTest" time="1.234"/>
+  <testcase name="multiple APIs fetched concurrently with independent rate limiters()" classname="com.example.MultiApiAggregationTest" time="0.006"/>
+  <testcase name="independent limiters do not block each other()" classname="com.example.MultiApiAggregationTest" time="0.004"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

@@ -1,43 +1,22 @@
 package com.example
 
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
 import ratelimiter.*
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
 class CompositeTieredLimitsTest {
 
-    private lateinit var client: HttpClient
-
-    @BeforeTest
-    fun setup() {
-        client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    @AfterTest
-    fun teardown() {
-        client.close()
-    }
-
     @Test
-    fun `composite limiter caps total requests at sustained limit`() = runBlocking {
-        val burstLimiter = BurstyRateLimiter(permits = 5, per = 1.seconds)
-        val sustainedLimiter = BurstyRateLimiter(permits = 8, per = 1.minutes)
+    fun `composite limiter caps total requests at sustained limit`() = runTest {
+        val burstLimiter = BurstyRateLimiter(permits = 5, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val sustainedLimiter = BurstyRateLimiter(permits = 8, per = 1.minutes, timeSource = testScheduler.timeSource)
         val limiter = CompositeRateLimiter(burstLimiter, sustainedLimiter)
 
         var granted = 0
@@ -56,30 +35,30 @@ class CompositeTieredLimitsTest {
     }
 
     @Test
-    fun `composite limiter respects burst limit within sustained window`() = runBlocking {
-        val burstLimiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
-        val sustainedLimiter = BurstyRateLimiter(permits = 20, per = 1.minutes)
+    fun `composite limiter respects burst limit within sustained window`() = runTest {
+        val client = createTestClient()
+        val burstLimiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val sustainedLimiter = BurstyRateLimiter(permits = 20, per = 1.minutes, timeSource = testScheduler.timeSource)
         val limiter = CompositeRateLimiter(burstLimiter, sustainedLimiter)
-        val mark = TimeSource.Monotonic.markNow()
+        val mark = testScheduler.timeSource.markNow()
 
-        // Make 6 requests using acquire (blocking) — burst limit of 3/sec means
-        // requests 4-6 should be delayed to the next second
+        // 6 requests with a 3/sec burst: requests 4-6 must wait for the next second.
         repeat(6) {
             limiter.withPermit {
                 client.get("https://jsonplaceholder.typicode.com/posts/${it + 1}")
             }
         }
 
-        val elapsed = mark.elapsedNow()
-        assertTrue(elapsed >= 800.toLong().let { it.seconds / 1000 },
-            "6 requests at 3/sec burst should take >800ms, took $elapsed")
+        val elapsedMs = mark.elapsedNow().inWholeMilliseconds
+        assertTrue(elapsedMs >= 800L,
+            "6 requests at 3/sec burst should take >=800ms, took ${elapsedMs}ms")
     }
 
     @Test
-    fun `tiered tryAcquire denial comes from the exhausted tier`() = runBlocking {
+    fun `tiered tryAcquire denial comes from the exhausted tier`() = runTest {
         // Very tight sustained limit
-        val burstLimiter = BurstyRateLimiter(permits = 10, per = 1.seconds)
-        val sustainedLimiter = BurstyRateLimiter(permits = 3, per = 1.minutes)
+        val burstLimiter = BurstyRateLimiter(permits = 10, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val sustainedLimiter = BurstyRateLimiter(permits = 3, per = 1.minutes, timeSource = testScheduler.timeSource)
         val limiter = CompositeRateLimiter(burstLimiter, sustainedLimiter)
 
         // Exhaust the sustained limit

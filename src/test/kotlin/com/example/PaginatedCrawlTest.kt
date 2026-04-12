@@ -1,43 +1,23 @@
 package com.example
 
-import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
 import ratelimiter.*
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
 class PaginatedCrawlTest {
 
-    private lateinit var client: HttpClient
-
-    @BeforeTest
-    fun setup() {
-        client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    @AfterTest
-    fun teardown() {
-        client.close()
-    }
-
     @Test
-    fun `paginated crawl fetches all pages at controlled rate`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
-        val mark = TimeSource.Monotonic.markNow()
+    fun `paginated crawl fetches all pages at controlled rate`() = runTest {
+        val client = createTestClient(serviceDelayMs = 10)
+        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val mark = testScheduler.timeSource.markNow()
         val allFacts = mutableListOf<CatFact>()
         val timestamps = mutableListOf<Long>()
 
@@ -52,14 +32,16 @@ class PaginatedCrawlTest {
         // Should have fetched facts from all 5 pages
         assertTrue(allFacts.size >= 5, "Should have at least 5 facts from 5 pages, got ${allFacts.size}")
 
-        // With 3 permits/sec, pages 4-5 should be delayed by at least ~1s from the start
+        // With 3 permits/sec: first 3 burst, then 1 refill per 333ms.
+        // 5 pages ⇒ last two waits add 2 × 333 ≈ 666ms span.
         val totalTime = timestamps.last() - timestamps.first()
-        assertTrue(totalTime >= 800, "5 pages at 3/sec should span >800ms, took ${totalTime}ms")
+        assertTrue(totalTime >= 600, "5 pages at 3/sec should span >=600ms, took ${totalTime}ms")
     }
 
     @Test
-    fun `paginated crawl returns valid data on each page`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
+    fun `paginated crawl returns valid data on each page`() = runTest {
+        val client = createTestClient()
+        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
 
         for (page in 1..3) {
             limiter.withPermit {

@@ -1,41 +1,22 @@
 package com.example
 
-import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
 import ratelimiter.*
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
 class RetryOnDenialTest {
 
-    private lateinit var client: HttpClient
-
-    @BeforeTest
-    fun setup() {
-        client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    @AfterTest
-    fun teardown() {
-        client.close()
-    }
-
     @Test
-    fun `tryAcquire serves cached data when rate limited`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 2, per = 1.seconds)
+    fun `tryAcquire serves cached data when rate limited`() = runTest {
+        val client = createTestClient()
+        val limiter = BurstyRateLimiter(permits = 2, per = 1.seconds, timeSource = testScheduler.timeSource)
         val cache = mutableMapOf<String, CatFact>()
         val liveHits = mutableListOf<String>()
         val cacheHits = mutableListOf<String>()
@@ -53,7 +34,6 @@ class RetryOnDenialTest {
                     liveHits.add(key)
                 }
                 is Permit.Denied -> {
-                    // Fall back to any cached value
                     val cached = cache.values.firstOrNull()
                     assertTrue(cached != null, "Cache should have at least the seeded value")
                     cacheHits.add(key)
@@ -66,8 +46,8 @@ class RetryOnDenialTest {
     }
 
     @Test
-    fun `denied permit provides meaningful retryAfter duration`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 1, per = 1.seconds)
+    fun `denied permit provides meaningful retryAfter duration`() = runTest {
+        val limiter = BurstyRateLimiter(permits = 1, per = 1.seconds, timeSource = testScheduler.timeSource)
 
         // Use the one permit
         limiter.acquire()
@@ -81,8 +61,9 @@ class RetryOnDenialTest {
     }
 
     @Test
-    fun `cache gets updated when permits are available`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
+    fun `cache gets updated when permits are available`() = runTest {
+        val client = createTestClient()
+        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
         val cache = mutableMapOf<Int, String>()
 
         // With 3 permits, first 3 requests should all be live and update the cache

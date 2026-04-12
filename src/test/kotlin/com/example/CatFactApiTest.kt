@@ -1,48 +1,27 @@
 package com.example
 
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.test.runTest
 import ratelimiter.*
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
 class CatFactApiTest {
 
-    private lateinit var client: HttpClient
-
-    @BeforeTest
-    fun setup() {
-        client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    @AfterTest
-    fun teardown() {
-        client.close()
-    }
-
     @Test
-    fun `rate limiter paces requests and all succeed`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
+    fun `rate limiter paces requests and all succeed`() = runTest {
+        val client = createTestClient()
+        val limiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
         val statuses = mutableListOf<Int>()
 
         repeat(5) {
@@ -56,9 +35,10 @@ class CatFactApiTest {
     }
 
     @Test
-    fun `concurrent requests are properly throttled`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 5, per = 1.seconds)
-        val mark = TimeSource.Monotonic.markNow()
+    fun `concurrent requests are properly throttled`() = runTest {
+        val client = createTestClient()
+        val limiter = BurstyRateLimiter(permits = 5, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val mark = testScheduler.timeSource.markNow()
 
         val results = coroutineScope {
             (1..10).map {
@@ -73,15 +53,16 @@ class CatFactApiTest {
 
         assertTrue(results.all { it.second == 200 }, "All should be 200")
 
-        val maxElapsed = results.maxOf { it.first }
-        assertTrue(maxElapsed >= 800.toLong().let { it.seconds / 1000 },
-            "10 requests at 5/sec should take at least ~1s, took $maxElapsed")
+        val maxElapsedMs = results.maxOf { it.first.inWholeMilliseconds }
+        assertTrue(maxElapsedMs >= 800L,
+            "10 requests at 5/sec should take at least ~1s, took ${maxElapsedMs}ms")
     }
 
     @Test
-    fun `smooth limiter spaces requests evenly`() = runBlocking {
-        val limiter = SmoothRateLimiter(permits = 3, per = 1.seconds)
-        val mark = TimeSource.Monotonic.markNow()
+    fun `smooth limiter spaces requests evenly`() = runTest {
+        val client = createTestClient()
+        val limiter = SmoothRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val mark = testScheduler.timeSource.markNow()
         val timestamps = mutableListOf<Long>()
 
         repeat(4) {
@@ -92,6 +73,7 @@ class CatFactApiTest {
             }
         }
 
+        // Smooth limiter: 3 permits/sec → ~333ms spacing. First permit is immediate.
         for (i in 1 until timestamps.size) {
             val gap = timestamps[i] - timestamps[i - 1]
             assertTrue(gap >= 250, "Gap between requests should be ~333ms, got ${gap}ms")
@@ -99,8 +81,8 @@ class CatFactApiTest {
     }
 
     @Test
-    fun `tryAcquire prevents excess requests`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 2, per = 1.seconds)
+    fun `tryAcquire prevents excess requests`() = runTest {
+        val limiter = BurstyRateLimiter(permits = 2, per = 1.seconds, timeSource = testScheduler.timeSource)
 
         limiter.acquire()
         limiter.acquire()
@@ -113,11 +95,12 @@ class CatFactApiTest {
     }
 
     @Test
-    fun `composite limiter enforces stricter of two limits`() = runBlocking {
-        val perSecond = BurstyRateLimiter(permits = 10, per = 1.seconds)
-        val perBurst = BurstyRateLimiter(permits = 3, per = 1.seconds)
+    fun `composite limiter enforces stricter of two limits`() = runTest {
+        val client = createTestClient()
+        val perSecond = BurstyRateLimiter(permits = 10, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val perBurst = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
         val limiter = CompositeRateLimiter(perSecond, perBurst)
-        val mark = TimeSource.Monotonic.markNow()
+        val mark = testScheduler.timeSource.markNow()
 
         val statuses = mutableListOf<Int>()
         repeat(5) {
@@ -129,27 +112,9 @@ class CatFactApiTest {
 
         assertTrue(statuses.all { it == 200 })
 
-        val elapsed = mark.elapsedNow()
-        assertTrue(elapsed >= 800.toLong().let { it.seconds / 1000 },
-            "5 requests at 3/sec should take >1s, took $elapsed")
-    }
-
-    @Test
-    fun `rate limiter headers decrease with requests`() = runBlocking {
-        val limiter = BurstyRateLimiter(permits = 2, per = 1.seconds)
-        val remainingValues = mutableListOf<String?>()
-
-        repeat(2) {
-            limiter.withPermit {
-                val response = client.get("https://catfact.ninja/fact")
-                remainingValues.add(response.headers["x-ratelimit-remaining"])
-            }
-        }
-
-        val parsed = remainingValues.mapNotNull { it?.toIntOrNull() }
-        if (parsed.size == 2) {
-            assertTrue(parsed[0] > parsed[1],
-                "Rate limit remaining should decrease: $parsed")
-        }
+        // Composite uses the tighter 3/sec burst: 5 requests ⇒ 2 refills ≈ 666ms.
+        val elapsedMs = mark.elapsedNow().inWholeMilliseconds
+        assertTrue(elapsedMs >= 600L,
+            "5 requests at 3/sec should take >=600ms, took ${elapsedMs}ms")
     }
 }

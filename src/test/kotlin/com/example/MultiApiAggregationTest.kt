@@ -1,45 +1,25 @@
 package com.example
 
-import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.test.runTest
 import ratelimiter.*
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
+import kotlin.time.ExperimentalTime
 
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
 class MultiApiAggregationTest {
 
-    private lateinit var client: HttpClient
-
-    @BeforeTest
-    fun setup() {
-        client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    @AfterTest
-    fun teardown() {
-        client.close()
-    }
-
     @Test
-    fun `multiple APIs fetched concurrently with independent rate limiters`() = runBlocking {
-        val catLimiter = BurstyRateLimiter(permits = 3, per = 1.seconds)
-        val postLimiter = BurstyRateLimiter(permits = 5, per = 1.seconds)
+    fun `multiple APIs fetched concurrently with independent rate limiters`() = runTest {
+        val client = createTestClient()
+        val catLimiter = BurstyRateLimiter(permits = 3, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val postLimiter = BurstyRateLimiter(permits = 5, per = 1.seconds, timeSource = testScheduler.timeSource)
 
         val (facts, posts) = coroutineScope {
             val factsJob = async {
@@ -66,11 +46,11 @@ class MultiApiAggregationTest {
     }
 
     @Test
-    fun `independent limiters do not block each other`() = runBlocking {
-        // Fast limiter for one API, slow for another
-        val fastLimiter = BurstyRateLimiter(permits = 10, per = 1.seconds)
-        val slowLimiter = BurstyRateLimiter(permits = 2, per = 1.seconds)
-        val mark = TimeSource.Monotonic.markNow()
+    fun `independent limiters do not block each other`() = runTest {
+        val client = createTestClient()
+        val fastLimiter = BurstyRateLimiter(permits = 10, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val slowLimiter = BurstyRateLimiter(permits = 2, per = 1.seconds, timeSource = testScheduler.timeSource)
+        val mark = testScheduler.timeSource.markNow()
 
         val (fastTime, slowTime) = coroutineScope {
             val fast = async {
@@ -92,7 +72,7 @@ class MultiApiAggregationTest {
             fast.await() to slow.await()
         }
 
-        // The slow limiter (2/sec, 4 requests) should take noticeably longer
+        // The slow limiter (2/sec, 4 requests) must wait for 2 permit windows.
         assertTrue(slowTime > fastTime,
             "Slow limiter ($slowTime) should take longer than fast ($fastTime)")
     }

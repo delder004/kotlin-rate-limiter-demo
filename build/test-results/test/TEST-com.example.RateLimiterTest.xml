@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.RateLimiterTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:50:07.040Z" hostname="Mac" time="0.025">
+<testsuite name="com.example.RateLimiterTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-12T21:00:11.950Z" hostname="Mac" time="0.005">
   <properties/>
-  <testcase name="tryAcquire returns Denied when no permits available()" classname="com.example.RateLimiterTest" time="0.017"/>
-  <testcase name="bursty limiter blocks when permits exhausted()" classname="com.example.RateLimiterTest" time="0.002"/>
-  <testcase name="tryAcquire returns Granted when permits available()" classname="com.example.RateLimiterTest" time="0.001"/>
-  <testcase name="bursty limiter grants permits up to capacity()" classname="com.example.RateLimiterTest" time="0.001"/>
+  <testcase name="tryAcquire returns Denied when no permits available()" classname="com.example.RateLimiterTest" time="0.002"/>
+  <testcase name="bursty limiter blocks when permits exhausted()" classname="com.example.RateLimiterTest" time="0.001"/>
+  <testcase name="tryAcquire returns Granted when permits available()" classname="com.example.RateLimiterTest" time="0.0"/>
+  <testcase name="bursty limiter grants permits up to capacity()" classname="com.example.RateLimiterTest" time="0.0"/>
   <testcase name="composite limiter enforces all sub-limiters()" classname="com.example.RateLimiterTest" time="0.001"/>
-  <testcase name="smooth limiter spaces out permits evenly()" classname="com.example.RateLimiterTest" time="0.001"/>
+  <testcase name="smooth limiter spaces out permits evenly()" classname="com.example.RateLimiterTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
