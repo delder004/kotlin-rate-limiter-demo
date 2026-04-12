@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.RetryOnDenialTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:50:07.066Z" hostname="Mac" time="0.952">
+  <properties/>
+  <testcase name="cache gets updated when permits are available()" classname="com.example.RetryOnDenialTest" time="0.575"/>
+  <testcase name="tryAcquire serves cached data when rate limited()" classname="com.example.RetryOnDenialTest" time="0.373"/>
+  <testcase name="denied permit provides meaningful retryAfter duration()" classname="com.example.RetryOnDenialTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

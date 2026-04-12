@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.CompositeTieredLimitsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:49:56.764Z" hostname="Mac" time="2.607">
+  <properties/>
+  <testcase name="composite limiter respects burst limit within sustained window()" classname="com.example.CompositeTieredLimitsTest" time="2.603"/>
+  <testcase name="composite limiter caps total requests at sustained limit()" classname="com.example.CompositeTieredLimitsTest" time="0.002"/>
+  <testcase name="tiered tryAcquire denial comes from the exhausted tier()" classname="com.example.CompositeTieredLimitsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

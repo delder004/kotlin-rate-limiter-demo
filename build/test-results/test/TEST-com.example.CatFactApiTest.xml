@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.CatFactApiTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-12T18:49:51.785Z" hostname="Mac" time="4.975">
+  <properties/>
+  <testcase name="rate limiter headers decrease with requests()" classname="com.example.CatFactApiTest" time="0.697"/>
+  <testcase name="composite limiter enforces stricter of two limits()" classname="com.example.CatFactApiTest" time="0.924"/>
+  <testcase name="tryAcquire prevents excess requests()" classname="com.example.CatFactApiTest" time="0.002"/>
+  <testcase name="smooth limiter spaces requests evenly()" classname="com.example.CatFactApiTest" time="1.202"/>
+  <testcase name="rate limiter paces requests and all succeed()" classname="com.example.CatFactApiTest" time="0.937"/>
+  <testcase name="concurrent requests are properly throttled()" classname="com.example.CatFactApiTest" time="1.209"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
