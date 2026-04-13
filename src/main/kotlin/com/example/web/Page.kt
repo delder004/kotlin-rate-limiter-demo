@@ -332,6 +332,72 @@ private val PAGE_CSS =
       margin-top: 10px;
     }
 
+    .child-slider-label-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .child-slider-label-row label {
+      margin-bottom: 0;
+    }
+
+    .info-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      margin-left: 6px;
+      border-radius: 50%;
+      border: 1px solid #c6cdc3;
+      background: #ffffff;
+      color: #5f665f;
+      font-size: 0.68rem;
+      font-weight: 700;
+      line-height: 1;
+      cursor: help;
+    }
+
+    .info-tip:hover,
+    .info-tip:focus {
+      background: #1f2421;
+      color: #f6f6f3;
+      outline: none;
+    }
+
+    .info-tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%);
+      background: #1f2421;
+      color: #f6f6f3;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 400;
+      line-height: 1.4;
+      width: max-content;
+      max-width: 240px;
+      white-space: normal;
+      text-align: left;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 120ms ease;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(31, 36, 33, 0.18);
+    }
+
+    .info-tip:hover::after,
+    .info-tip:focus::after {
+      opacity: 1;
+      visibility: visible;
+    }
+
     #step-start .start-row {
       margin-top: 14px;
       display: flex;
@@ -666,6 +732,16 @@ private val DurationChoices =
         DurationChoice(86400, "day"),
     )
 
+private fun FlowContent.renderInfoTip(text: String) {
+    span("info-tip") {
+        attributes["tabindex"] = "0"
+        attributes["role"] = "img"
+        attributes["aria-label"] = text
+        attributes["data-tip"] = text
+        +"?"
+    }
+}
+
 private fun FlowContent.renderOverflowRow(idPrefix: String) {
     div("overflow-row") {
         span("overflow-label") { +"On overflow:" }
@@ -982,9 +1058,16 @@ fun HTML.renderPageShell() {
                     summary { +"Advanced" }
                     div("traffic-advanced-body") {
                         div("child-slider") {
-                            label {
-                                htmlFor = "input-serviceTimeMs"
-                                +"Service time"
+                            div("child-slider-label-row") {
+                                label {
+                                    htmlFor = "input-serviceTimeMs"
+                                    +"Service time"
+                                }
+                                renderInfoTip(
+                                    "Base time each simulated request takes to process, " +
+                                        "in milliseconds. Higher values keep workers busy longer, " +
+                                        "lowering effective throughput and growing the queue.",
+                                )
                             }
                             input {
                                 id = "input-serviceTimeMs"
@@ -1006,9 +1089,16 @@ fun HTML.renderPageShell() {
                         }
 
                         div("child-slider") {
-                            label {
-                                htmlFor = "input-jitterMs"
-                                +"Jitter"
+                            div("child-slider-label-row") {
+                                label {
+                                    htmlFor = "input-jitterMs"
+                                    +"Jitter"
+                                }
+                                renderInfoTip(
+                                    "Random variance added to each request's service time, " +
+                                        "from 0 up to this value. Simulates real-world latency " +
+                                        "noise so requests don't finish in lockstep.",
+                                )
                             }
                             input {
                                 id = "input-jitterMs"
@@ -1030,9 +1120,16 @@ fun HTML.renderPageShell() {
                         }
 
                         div("child-slider") {
-                            label {
-                                htmlFor = "input-failureRate"
-                                +"Failure rate"
+                            div("child-slider-label-row") {
+                                label {
+                                    htmlFor = "input-failureRate"
+                                    +"Failure rate"
+                                }
+                                renderInfoTip(
+                                    "Chance each processed request is marked as a failure " +
+                                        "(500 response). Failed requests still consume a permit " +
+                                        "and a worker slot — they just don't count as successful work.",
+                                )
                             }
                             input {
                                 id = "input-failureRate"
@@ -1055,9 +1152,16 @@ fun HTML.renderPageShell() {
                         }
 
                         div("child-slider") {
-                            label {
-                                htmlFor = "input-workerConcurrency"
-                                +"Worker concurrency"
+                            div("child-slider-label-row") {
+                                label {
+                                    htmlFor = "input-workerConcurrency"
+                                    +"Worker concurrency"
+                                }
+                                renderInfoTip(
+                                    "Number of parallel workers pulling from the queue. Acts as " +
+                                        "a hard ceiling on in-flight requests, independent of the " +
+                                        "limiter — too few workers will bottleneck even a generous limit.",
+                                )
                             }
                             input {
                                 id = "input-workerConcurrency"
