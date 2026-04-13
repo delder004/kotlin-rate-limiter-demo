@@ -682,6 +682,49 @@ private val PAGE_CSS =
     [data-show-hidden] {
       display: none !important;
     }
+
+    #hero {
+      display: grid;
+      grid-template-columns: minmax(240px, 320px) 1fr;
+      gap: 32px;
+      align-items: center;
+    }
+
+    #hero video {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid #dde2da;
+      background: #ffffff;
+      display: block;
+    }
+
+    #hero h1 {
+      font-size: 1.9rem;
+    }
+
+    #hero .hero-lede {
+      margin: 12px 0 0;
+      font-size: 1.02rem;
+      line-height: 1.5;
+      color: #3a3f39;
+    }
+
+    #hero .subtitle {
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 720px) {
+      #hero {
+        grid-template-columns: 1fr;
+        gap: 18px;
+      }
+
+      #hero video {
+        max-width: 320px;
+        margin: 0 auto;
+      }
+    }
     """.trimIndent()
 
 private val initialSignals =
@@ -1162,13 +1205,37 @@ fun HTML.renderPageShell() {
             attributes["data-signals"] = initialSignals
 
             header {
-                h1 { +"Kotlin Rate Limiter Demo" }
-                p("subtitle") {
-                    +"A demo app showing the use cases of "
-                    a(href = "https://github.com/delder004/kotlin-rate-limiter") {
-                        +"github.com/delder004/kotlin-rate-limiter"
+                id = "hero"
+                video {
+                    attributes["autoplay"] = ""
+                    attributes["muted"] = ""
+                    attributes["loop"] = ""
+                    attributes["playsinline"] = ""
+                    attributes["preload"] = "metadata"
+                    attributes["poster"] = "/static/hero-poster.jpg"
+                    attributes["width"] = "720"
+                    attributes["height"] = "876"
+                    source {
+                        attributes["src"] = "/static/hero.webm"
+                        attributes["type"] = "video/webm"
                     }
-                    +"."
+                    source {
+                        attributes["src"] = "/static/hero.mp4"
+                        attributes["type"] = "video/mp4"
+                    }
+                }
+                div {
+                    h1 { +"Kotlin Rate Limiter Demo" }
+                    p("hero-lede") {
+                        +"Watch a rate limiter under real load. Pick a scenario, tune rate and burst, and see what breaks — token-bucket shaping, honest overload, and dropped work visible in the metrics."
+                    }
+                    p("subtitle") {
+                        +"Backed by "
+                        a(href = "https://github.com/delder004/kotlin-rate-limiter") {
+                            +"github.com/delder004/kotlin-rate-limiter"
+                        }
+                        +"."
+                    }
                 }
             }
 

@@ -4,8 +4,10 @@ import com.example.simulation.CoroutineSimulationEngine
 import com.example.simulation.SimulationRegistry
 import com.example.web.registerRoutes
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.partialcontent.PartialContent
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +22,7 @@ fun main() {
 }
 
 fun Application.module(registry: SimulationRegistry = SimulationRegistry()) {
+    install(PartialContent)
     routing {
         registerRoutes(registry)
     }

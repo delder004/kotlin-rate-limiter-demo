@@ -248,18 +248,18 @@ val DefaultPresets: List<SimulationPreset> =
         SimulationPreset(
             id = "composite",
             label = "Tiered limits",
-            description = "Two stacked limits: 20/s AND 120/10s. Long-run ceiling kicks in.",
+            description = "Two stacked limits: 30/s AND 120/10s. Long-run ceiling kicks in.",
             updates =
                 mapOf(
                     "limiterType" to "composite",
                     "compositeCount" to "2",
                     "child0Type" to "bursty",
-                    "child0Permits" to "20",
+                    "child0Permits" to "30",
                     "child0PerSeconds" to "1",
                     "child1Type" to "bursty",
                     "child1Permits" to "120",
                     "child1PerSeconds" to "10",
-                    "requestsPerSecond" to "30",
+                    "requestsPerSecond" to "40",
                     "overflowMode" to "reject",
                 ),
         ),

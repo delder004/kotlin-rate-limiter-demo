@@ -14,6 +14,16 @@ class PageTest {
     }
 
     @Test
+    fun `shell contains hero video with poster and both sources`() {
+        assertTrue("id=\"hero\"" in rendered, "hero container missing")
+        assertTrue("<video" in rendered, "hero video element missing")
+        assertTrue("preload=\"metadata\"" in rendered, "video should use preload=metadata")
+        assertTrue("poster=\"/static/hero-poster.jpg\"" in rendered, "poster attribute missing")
+        assertTrue("src=\"/static/hero.webm\"" in rendered, "webm source missing")
+        assertTrue("src=\"/static/hero.mp4\"" in rendered, "mp4 source missing")
+    }
+
+    @Test
     fun `shell contains page-root with initial signals`() {
         assertTrue("id=\"page-root\"" in rendered)
         assertTrue("data-signals" in rendered)

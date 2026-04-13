@@ -9,6 +9,7 @@ import com.example.simulation.Validator
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.html.*
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -21,6 +22,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 fun Route.registerRoutes(registry: SimulationRegistry) {
+    staticResources("/static", "static")
+
     get("/") {
         call.respondHtml { renderPageShell() }
     }

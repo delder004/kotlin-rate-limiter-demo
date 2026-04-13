@@ -35,6 +35,31 @@ class RoutesTest {
         }
 
     @Test
+    fun `GET static hero poster returns 200`() =
+        testApplication {
+            application { module() }
+            val response = client.get("/static/hero-poster.jpg")
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertTrue((response.contentLength() ?: 0L) > 0L, "poster should have a body")
+        }
+
+    @Test
+    fun `GET static hero mp4 with Range header returns 206 Partial Content`() =
+        testApplication {
+            application { module() }
+            val response =
+                client.get("/static/hero.mp4") {
+                    header(HttpHeaders.Range, "bytes=0-99")
+                }
+            assertEquals(
+                HttpStatusCode.PartialContent,
+                response.status,
+                "browsers (Safari in particular) need 206 on Range requests for <video> to play reliably",
+            )
+            assertNotNull(response.headers[HttpHeaders.ContentRange], "Content-Range header missing")
+        }
+
+    @Test
     fun `GET returns 200 HTML page shell`() =
         testApplication {
             application { module() }
