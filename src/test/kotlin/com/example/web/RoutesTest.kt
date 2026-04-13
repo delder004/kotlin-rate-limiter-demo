@@ -45,7 +45,7 @@ class RoutesTest {
                 "expected HTML content-type, got $contentType",
             )
             val body = response.bodyAsText()
-            assertTrue("Rate Limiter Sandbox" in body)
+            assertTrue("Kotlin Rate Limiter Demo" in body)
             assertTrue("id=\"page-root\"" in body)
             assertTrue("id=\"step-limiter\"" in body)
             assertTrue("id=\"stats-panel\"" in body)

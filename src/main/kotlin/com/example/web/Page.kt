@@ -892,7 +892,7 @@ private fun FlowContent.renderCompositeChildRow(index: Int) {
 
 fun HTML.renderPageShell() {
     head {
-        title { +"Rate Limiter Sandbox" }
+        title { +"Kotlin Rate Limiter Demo" }
         meta { charset = "utf-8" }
         meta {
             name = "viewport"
@@ -913,8 +913,14 @@ fun HTML.renderPageShell() {
             attributes["data-signals"] = initialSignals
 
             header {
-                h1 { +"Rate Limiter Sandbox" }
-                p("subtitle") { +"Pick a limiter, dial in the knobs, send it traffic." }
+                h1 { +"Kotlin Rate Limiter Demo" }
+                p("subtitle") {
+                    +"A demo app showing the use cases of "
+                    a(href = "https://github.com/delder004/kotlin-rate-limiter") {
+                        +"github.com/delder004/kotlin-rate-limiter"
+                    }
+                    +"."
+                }
             }
 
             section("wizard-step") {

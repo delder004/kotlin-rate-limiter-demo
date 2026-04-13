@@ -10,7 +10,7 @@ class PageTest {
 
     @Test
     fun `shell contains page title`() {
-        assertTrue("Rate Limiter Sandbox" in rendered, "title missing")
+        assertTrue("Kotlin Rate Limiter Demo" in rendered, "title missing")
     }
 
     @Test
