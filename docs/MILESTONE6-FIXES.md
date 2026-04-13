@@ -36,8 +36,8 @@ Confirmed cause:
 
 Relevant code:
 
-- [Routes.kt](/Users/delos/repos/test-rate-limiter/src/main/kotlin/com/example/web/Routes.kt:150)
-- [Page.kt](/Users/delos/repos/test-rate-limiter/src/main/kotlin/com/example/web/Page.kt:117)
+- [Routes.kt](/Users/delos/repos/kotlin-rate-limiter-demo/src/main/kotlin/com/example/web/Routes.kt:150)
+- [Page.kt](/Users/delos/repos/kotlin-rate-limiter-demo/src/main/kotlin/com/example/web/Page.kt:117)
 
 Effect:
 
@@ -55,8 +55,8 @@ Observed behavior:
 
 Relevant code:
 
-- [Page.kt](/Users/delos/repos/test-rate-limiter/src/main/kotlin/com/example/web/Page.kt:44)
-- [Page.kt](/Users/delos/repos/test-rate-limiter/src/main/kotlin/com/example/web/Page.kt:79)
+- [Page.kt](/Users/delos/repos/kotlin-rate-limiter-demo/src/main/kotlin/com/example/web/Page.kt:44)
+- [Page.kt](/Users/delos/repos/kotlin-rate-limiter-demo/src/main/kotlin/com/example/web/Page.kt:79)
 
 Effect:
 

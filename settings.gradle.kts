@@ -1,1 +1,1 @@
-rootProject.name = "test-rate-limiter"
+rootProject.name = "kotlin-rate-limiter-demo"

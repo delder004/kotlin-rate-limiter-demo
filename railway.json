@@ -5,7 +5,7 @@
     "buildCommand": "./gradlew --no-daemon installDist"
   },
   "deploy": {
-    "startCommand": "./build/install/test-rate-limiter/bin/test-rate-limiter",
+    "startCommand": "./build/install/kotlin-rate-limiter-demo/bin/kotlin-rate-limiter-demo",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

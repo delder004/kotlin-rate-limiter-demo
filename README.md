@@ -1,4 +1,4 @@
-# test-rate-limiter
+# kotlin-rate-limiter-demo
 
 A server-driven web dashboard for exploring rate-limiter behavior under load. Built with Kotlin, Ktor, and [Datastar](https://data-star.dev/) — the browser is a reactive document, not a client app.
 

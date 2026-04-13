@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document turns [DESIGN.md](/Users/delos/repos/test-rate-limiter/DESIGN.md) into a concrete build plan.
+This document turns [DESIGN.md](/Users/delos/repos/kotlin-rate-limiter-demo/DESIGN.md) into a concrete build plan.
 
 The target is a Datastar-first, SSE-based dashboard built from scratch, not a migration of the current WebSocket demo.
 
