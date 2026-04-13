@@ -93,6 +93,12 @@ class CoroutineSimulationEngine(
         handle: SimulationHandle,
     ) {
         var accumulator = 0.0
+        // Anchor the tick schedule in absolute time so per-request sleeps can
+        // hit exact targets and absorb drift. Spreading arrivals within the
+        // tick is what lets SmoothRateLimiter (capacity=1) admit at its
+        // configured rate — previously the whole tick's worth of arrivals
+        // fired synchronously, so Smooth denied everything but the first.
+        var tickStart = timeSource()
         while (currentScopeActive()) {
             val liveConfig = handle.config
             val reject = liveConfig.overflowMode == OverflowMode.REJECT
@@ -100,7 +106,17 @@ class CoroutineSimulationEngine(
             accumulator += requestsPerTick
             val toEmit = accumulator.toInt()
             accumulator -= toEmit
-            repeat(toEmit) {
+            if (toEmit <= 0) {
+                tickStart += tickMs
+                val sleepMs = tickStart - timeSource()
+                if (sleepMs > 0) delay(sleepMs)
+                continue
+            }
+            val interval = tickMs.toDouble() / toEmit
+            for (i in 0 until toEmit) {
+                val targetTime = tickStart + (interval * (i + 1)).toLong()
+                val sleepMs = targetTime - timeSource()
+                if (sleepMs > 0) delay(sleepMs)
                 val arrivalMs = timeSource() - startMs
                 if (reject) {
                     when (limiter.tryAcquire()) {
@@ -135,7 +151,7 @@ class CoroutineSimulationEngine(
                     }
                 }
             }
-            delay(tickMs)
+            tickStart += tickMs
         }
     }
 
