@@ -1,0 +1,13 @@
+.git/
+.gradle/
+.kotlin/
+.idea/
+.vscode/
+.claude/
+build/
+docs/
+*.md
+!README.md
+.DS_Store
+.envrc
+.envrc.local

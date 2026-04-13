@@ -15,7 +15,8 @@ fun main() {
     val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val engine = CoroutineSimulationEngine(scope = engineScope)
     val registry = SimulationRegistry(engine = engine)
-    embeddedServer(Netty, port = 8080) { module(registry) }.start(wait = true)
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    embeddedServer(Netty, port = port, host = "0.0.0.0") { module(registry) }.start(wait = true)
 }
 
 fun Application.module(registry: SimulationRegistry = SimulationRegistry()) {
