@@ -105,15 +105,59 @@ private val PAGE_CSS =
       gap: 12px;
       margin-top: 8px;
       justify-content: space-between;
-      flex-wrap: wrap;
+    }
+
+    @media (max-width: 560px) {
+      .child-slider-meta {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .child-slider-meta > .slider-value {
+        justify-content: flex-end;
+      }
     }
 
     .slider-value {
-      min-width: 64px;
-      text-align: right;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
       font-variant-numeric: tabular-nums;
       font-size: 1.1rem;
       font-weight: 600;
+    }
+
+    .slider-value-input {
+      width: 68px;
+      padding: 4px 6px;
+      border: 1px solid #c6cdc3;
+      border-radius: 6px;
+      background: #ffffff;
+      color: inherit;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-align: right;
+      -moz-appearance: textfield;
+    }
+
+    .slider-value-input::-webkit-outer-spin-button,
+    .slider-value-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .slider-value-input:focus {
+      outline: none;
+      border-color: #1f2421;
+    }
+
+    .slider-value-unit {
+      color: #5f665f;
+      font-weight: 500;
+      font-size: 0.95rem;
     }
 
     .duration-toggle {
@@ -545,7 +589,7 @@ private val PAGE_CSS =
 private val initialSignals =
     """
     {
-      "ui": { "step": 1 },
+      "ui": { "step": 1, "failureRatePct": 0 },
       "sim": { "id": null, "status": "idle", "running": false },
       "config": {
         "limiterType": "",
@@ -769,6 +813,39 @@ private fun FlowContent.renderOverflowRow(idPrefix: String) {
     }
 }
 
+private fun FlowContent.renderSliderValueInput(
+    id: String,
+    signal: String,
+    min: String,
+    max: String,
+    step: String,
+    integer: Boolean,
+    ariaLabel: String,
+    extraOnInput: String = "",
+    extraOnChange: String = "\$sim.running && @patch('/simulations/' + \$sim.id)",
+) {
+    val numericCoerce = if (integer) {
+        "Math.min($max, Math.max($min, Math.round(Number(\$$signal) || 0)))"
+    } else {
+        "Math.min($max, Math.max($min, Number(\$$signal) || 0))"
+    }
+    val coerce = "\$$signal = $numericCoerce"
+    val onChange = if (extraOnChange.isNotEmpty()) "($coerce, $extraOnChange)" else "($coerce)"
+    input(classes = "slider-value-input") {
+        this.id = id
+        type = InputType.number
+        attributes["min"] = min
+        attributes["max"] = max
+        attributes["step"] = step
+        attributes["data-bind"] = signal
+        attributes["aria-label"] = ariaLabel
+        attributes["data-on-change"] = onChange
+        if (extraOnInput.isNotEmpty()) {
+            attributes["data-on-input"] = extraOnInput
+        }
+    }
+}
+
 private fun FlowContent.renderDurationToggle(
     idPrefix: String,
     permitsPath: String,
@@ -858,8 +935,15 @@ private fun FlowContent.renderCompositeChildRow(index: Int) {
                         perSecondsPath = "config.$perSecondsKey",
                     )
                     span("slider-value") {
-                        attributes["data-text"] = "\$config.$permitsKey + ''"
-                        +"—"
+                        renderSliderValueInput(
+                            id = "input-$permitsKey-value",
+                            signal = "config.$permitsKey",
+                            min = "1",
+                            max = "2000",
+                            step = "1",
+                            integer = true,
+                            ariaLabel = "Limiter ${index + 1} permits value",
+                        )
                     }
                 }
             }
@@ -881,8 +965,16 @@ private fun FlowContent.renderCompositeChildRow(index: Int) {
                 }
                 div("child-slider-meta") {
                     span("slider-value") {
-                        attributes["data-text"] = "\$config.$warmupKey + 's'"
-                        +"0s"
+                        renderSliderValueInput(
+                            id = "input-$warmupKey-value",
+                            signal = "config.$warmupKey",
+                            min = "0",
+                            max = "30",
+                            step = "0.5",
+                            integer = false,
+                            ariaLabel = "Limiter ${index + 1} warmup seconds value",
+                        )
+                        span("slider-value-unit") { +"s" }
                     }
                 }
             }
@@ -980,7 +1072,11 @@ fun HTML.renderPageShell() {
                 input {
                     id = "input-permits"
                     type = InputType.range
-                    attributes["min"] = "0"
+                    // Server rejects permits=0 for non-composite limiters, so the
+                    // control never lets the signal settle below 1 once the user
+                    // interacts. The signal stays at its initial 0 until then,
+                    // which is what keeps step 3 hidden on the fresh wizard.
+                    attributes["min"] = "1"
                     attributes["max"] = "500"
                     attributes["step"] = "1"
                     attributes["data-bind"] = "config.permits"
@@ -996,9 +1092,17 @@ fun HTML.renderPageShell() {
                         perSecondsPath = "config.perSeconds",
                     )
                     span("slider-value") {
-                        attributes["data-text"] =
-                            "\$config.permits > 0 ? \$config.permits : '—'"
-                        +"—"
+                        renderSliderValueInput(
+                            id = "input-permits-value",
+                            signal = "config.permits",
+                            min = "1",
+                            max = "500",
+                            step = "1",
+                            integer = true,
+                            ariaLabel = "Permits value",
+                            extraOnInput =
+                                "\$config.permits > 0 && (\$ui.step = Math.max(\$ui.step, 3))",
+                        )
                     }
                 }
                 renderFieldErrorSlot("permits")
@@ -1022,8 +1126,16 @@ fun HTML.renderPageShell() {
                     }
                     div("child-slider-meta") {
                         span("slider-value") {
-                            attributes["data-text"] = "\$config.warmupSeconds + 's'"
-                            +"0s"
+                            renderSliderValueInput(
+                                id = "input-warmupSeconds-value",
+                                signal = "config.warmupSeconds",
+                                min = "0",
+                                max = "30",
+                                step = "0.5",
+                                integer = false,
+                                ariaLabel = "Warmup seconds value",
+                            )
+                            span("slider-value-unit") { +"s" }
                         }
                     }
                     renderFieldErrorSlot("warmupSeconds")
@@ -1052,10 +1164,19 @@ fun HTML.renderPageShell() {
                 }
                 div("child-slider-meta") {
                     span("slider-value") {
-                        attributes["data-text"] =
-                            "\$config.requestsPerSecond > 0 ? " +
-                            "(\$config.requestsPerSecond + ' req/s') : '—'"
-                        +"—"
+                        renderSliderValueInput(
+                            id = "input-requestsPerSecond-value",
+                            signal = "config.requestsPerSecond",
+                            min = "0",
+                            max = "500",
+                            step = "1",
+                            integer = false,
+                            ariaLabel = "Requests per second value",
+                            extraOnInput =
+                                "\$config.requestsPerSecond > 0 && " +
+                                "(\$ui.step = Math.max(\$ui.step, 4))",
+                        )
+                        span("slider-value-unit") { +"req/s" }
                     }
                 }
                 renderFieldErrorSlot("requestsPerSecond")
@@ -1087,8 +1208,16 @@ fun HTML.renderPageShell() {
                             }
                             div("child-slider-meta") {
                                 span("slider-value") {
-                                    attributes["data-text"] = "\$config.serviceTimeMs + ' ms'"
-                                    +"50 ms"
+                                    renderSliderValueInput(
+                                        id = "input-serviceTimeMs-value",
+                                        signal = "config.serviceTimeMs",
+                                        min = "0",
+                                        max = "500",
+                                        step = "5",
+                                        integer = true,
+                                        ariaLabel = "Service time milliseconds value",
+                                    )
+                                    span("slider-value-unit") { +"ms" }
                                 }
                             }
                             renderFieldErrorSlot("serviceTimeMs")
@@ -1118,8 +1247,17 @@ fun HTML.renderPageShell() {
                             }
                             div("child-slider-meta") {
                                 span("slider-value") {
-                                    attributes["data-text"] = "'±' + \$config.jitterMs + ' ms'"
-                                    +"±20 ms"
+                                    span("slider-value-unit") { +"±" }
+                                    renderSliderValueInput(
+                                        id = "input-jitterMs-value",
+                                        signal = "config.jitterMs",
+                                        min = "0",
+                                        max = "200",
+                                        step = "1",
+                                        integer = true,
+                                        ariaLabel = "Jitter milliseconds value",
+                                    )
+                                    span("slider-value-unit") { +"ms" }
                                 }
                             }
                             renderFieldErrorSlot("jitterMs")
@@ -1144,14 +1282,31 @@ fun HTML.renderPageShell() {
                                 attributes["max"] = "1"
                                 attributes["step"] = "0.01"
                                 attributes["data-bind"] = "config.failureRate"
+                                attributes["data-on-input"] =
+                                    "\$ui.failureRatePct = Math.round(\$config.failureRate * 100)"
                                 attributes["data-on-change"] =
                                     "\$sim.running && @patch('/simulations/' + \$sim.id)"
                             }
                             div("child-slider-meta") {
                                 span("slider-value") {
-                                    attributes["data-text"] =
-                                        "Math.round(\$config.failureRate * 100) + '%'"
-                                    +"0%"
+                                    input(classes = "slider-value-input") {
+                                        id = "input-failureRate-value"
+                                        type = InputType.number
+                                        attributes["min"] = "0"
+                                        attributes["max"] = "100"
+                                        attributes["step"] = "1"
+                                        attributes["data-bind"] = "ui.failureRatePct"
+                                        attributes["aria-label"] = "Failure rate percent value"
+                                        attributes["data-on-input"] =
+                                            "\$config.failureRate = " +
+                                            "Math.min(1, Math.max(0, (Number(\$ui.failureRatePct) || 0) / 100))"
+                                        attributes["data-on-change"] =
+                                            "(\$ui.failureRatePct = Math.min(100, Math.max(0, " +
+                                            "Math.round(Number(\$ui.failureRatePct) || 0))), " +
+                                            "\$config.failureRate = \$ui.failureRatePct / 100, " +
+                                            "\$sim.running && @patch('/simulations/' + \$sim.id))"
+                                    }
+                                    span("slider-value-unit") { +"%" }
                                 }
                             }
                             renderFieldErrorSlot("failureRate")
@@ -1181,8 +1336,15 @@ fun HTML.renderPageShell() {
                             }
                             div("child-slider-meta") {
                                 span("slider-value") {
-                                    attributes["data-text"] = "\$config.workerConcurrency"
-                                    +"50"
+                                    renderSliderValueInput(
+                                        id = "input-workerConcurrency-value",
+                                        signal = "config.workerConcurrency",
+                                        min = "1",
+                                        max = "200",
+                                        step = "1",
+                                        integer = true,
+                                        ariaLabel = "Worker concurrency value",
+                                    )
                                 }
                             }
                             renderFieldErrorSlot("workerConcurrency")
