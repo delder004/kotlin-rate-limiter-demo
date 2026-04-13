@@ -46,7 +46,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.example.ServerKt")
+    mainClass.set("com.example.ApplicationKt")
 }
 
 tasks.test {

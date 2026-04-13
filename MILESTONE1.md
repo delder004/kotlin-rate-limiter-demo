@@ -1,5 +1,37 @@
 # Milestone 1
 
+## Status
+
+Complete as of 2026-04-12.
+
+### Completion Summary
+
+Delivered:
+
+- `src/main/kotlin/com/example/Application.kt`
+- `src/main/kotlin/com/example/web/Routes.kt`
+- `src/main/kotlin/com/example/web/Page.kt`
+- `src/test/kotlin/com/example/web/PageTest.kt`
+- `src/test/kotlin/com/example/web/RoutesTest.kt`
+- `build.gradle.kts` update to point `mainClass` at `ApplicationKt`
+
+Confirmed outcomes:
+
+- the app has a new thin Ktor entry point
+- `GET /` returns the Datastar-ready page shell
+- stable region IDs are present:
+  - `page-root`
+  - `controls-panel`
+  - `status-panel`
+  - `stats-panel`
+  - `chart-panel`
+  - `log-panel`
+  - `errors-panel`
+- initial `data-signals` cover `sim`, `config`, `stats`, and `errors`
+- 10 new `com.example.web.*` tests pass
+- the legacy `Server.kt` and `Dashboard.kt` remain untouched
+- the full main build succeeds
+
 ## Objective
 
 Build the first runnable slice of the new app:
@@ -237,4 +269,3 @@ Milestone 2 should be able to start directly from this shell by adding:
 - start and stop routes
 
 If milestone 2 needs to redesign the shell, milestone 1 was too vague or too coupled.
-
