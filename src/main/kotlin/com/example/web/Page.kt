@@ -25,6 +25,10 @@ private val PAGE_CSS =
       gap: 20px;
     }
 
+    #page-root > * {
+      min-width: 0;
+    }
+
     header h1,
     section h2 {
       margin: 0;
@@ -42,15 +46,106 @@ private val PAGE_CSS =
     }
 
     .wizard-step,
-    #run-panels > section {
+    #run-panels > section,
+    #tweak-panel {
       background: #ffffff;
       border: 1px solid #dde2da;
       border-radius: 10px;
       padding: 18px 20px;
     }
 
-    .wizard-step h2 {
+    .wizard-step h2,
+    #tweak-panel h2 {
       font-size: 1.05rem;
+    }
+
+    #presets-panel.presets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .preset-button {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      padding: 14px 16px;
+      border: 1px solid #c6cdc3;
+      border-radius: 10px;
+      background: #ffffff;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    }
+
+    .preset-button:hover {
+      border-color: #1f2421;
+      background: #f8f9f5;
+    }
+
+    .preset-button:active {
+      transform: translateY(1px);
+    }
+
+    .preset-label {
+      font-weight: 600;
+      font-size: 0.98rem;
+    }
+
+    .preset-description {
+      font-size: 0.82rem;
+      color: #5f665f;
+      line-height: 1.35;
+    }
+
+    #tweak-panel > summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 1.05rem;
+      list-style: none;
+      user-select: none;
+      margin: -18px -20px;
+      padding: 18px 20px;
+    }
+
+    #tweak-panel > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    #tweak-panel > summary::before {
+      content: "▸ ";
+      display: inline-block;
+      width: 1em;
+    }
+
+    #tweak-panel[open] > summary::before {
+      content: "▾ ";
+    }
+
+    #tweak-panel[open] > summary {
+      margin-bottom: 8px;
+    }
+
+    .tweak-section {
+      margin-top: 14px;
+    }
+
+    .tweak-section h3 {
+      margin: 0 0 8px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #5f665f;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    #presets-hint {
+      margin: 0 0 6px;
+      color: #5f665f;
+      font-size: 0.9rem;
     }
 
     .limiter-buttons {
@@ -220,6 +315,7 @@ private val PAGE_CSS =
     .composite-row-header {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
     }
 
@@ -589,11 +685,11 @@ private val PAGE_CSS =
 private val initialSignals =
     """
     {
-      "ui": { "step": 1, "failureRatePct": 0 },
+      "ui": { "failureRatePct": 0 },
       "sim": { "id": null, "status": "idle", "running": false },
       "config": {
-        "limiterType": "",
-        "permits": 0,
+        "limiterType": "bursty",
+        "permits": 20,
         "perSeconds": 1.0,
         "warmupSeconds": 0.0,
         "compositeCount": 2,
@@ -602,7 +698,7 @@ private val initialSignals =
         "child0PerSeconds": 1,
         "child0WarmupSeconds": 0,
         "child1Type": "bursty",
-        "child1Permits": 30,
+        "child1Permits": 50,
         "child1PerSeconds": 10,
         "child1WarmupSeconds": 0,
         "child2Type": "bursty",
@@ -617,7 +713,7 @@ private val initialSignals =
         "child4Permits": 100,
         "child4PerSeconds": 60,
         "child4WarmupSeconds": 0,
-        "requestsPerSecond": 0,
+        "requestsPerSecond": 10,
         "overflowMode": "queue",
         "apiTarget": "none",
         "serviceTimeMs": 50,
@@ -663,7 +759,17 @@ private val CHART_SCRIPT =
                 label: 'Throughput (req/s)',
                 data: [],
                 borderColor: '#3ca13c',
-                backgroundColor: 'rgba(60,161,60,0.12)',
+                backgroundColor: 'rgba(60,161,60,0.18)',
+                fill: true,
+                tension: 0.25,
+                pointRadius: 0,
+                borderWidth: 2
+              },
+              {
+                label: 'Denied/sec',
+                data: [],
+                borderColor: '#b42318',
+                backgroundColor: 'rgba(180,35,24,0.18)',
                 fill: true,
                 tension: 0.25,
                 pointRadius: 0,
@@ -682,7 +788,7 @@ private val CHART_SCRIPT =
               {
                 label: 'Incoming/sec',
                 data: [],
-                borderColor: '#b42318',
+                borderColor: '#6f776e',
                 backgroundColor: 'transparent',
                 borderDash: [2, 3],
                 tension: 0,
@@ -725,9 +831,10 @@ private val CHART_SCRIPT =
         lastCompleted = completed;
         var t = ((Date.now() - seriesStart) / 1000).toFixed(1);
         chart.data.labels.push(t);
-        chart.data.datasets[0].data.push(Number(s.acceptRate) || 0);
-        chart.data.datasets[1].data.push(Number(s.permitsPerSec)  || 0);
-        chart.data.datasets[2].data.push(Number(s.incomingPerSec) || 0);
+        chart.data.datasets[0].data.push(Number(s.acceptRate)    || 0);
+        chart.data.datasets[1].data.push(Number(s.rejectRate)    || 0);
+        chart.data.datasets[2].data.push(Number(s.permitsPerSec) || 0);
+        chart.data.datasets[3].data.push(Number(s.incomingPerSec)|| 0);
         if (chart.data.labels.length > 150) {
           chart.data.labels.shift();
           chart.data.datasets.forEach(function(d){ d.data.shift(); });
@@ -735,6 +842,53 @@ private val CHART_SCRIPT =
         chart.update('none');
       };
       window.__chartReset = reset;
+
+      // Presets with a "burst then drain" phase call __scheduleFollowUp to
+      // hand the requestsPerSecond slider a new value after `delayMs` ms.
+      // __cancelFollowUp must run on anything that invalidates the pending
+      // drain: a different preset click, manual slider input, or Start/Stop.
+      // Without this, clicking Burst-then-drain and then Smooth within 5s
+      // will still clobber rps back to 5.
+      var pendingFollowUp = null;
+      window.__cancelFollowUp = function() {
+        if (pendingFollowUp != null) {
+          clearTimeout(pendingFollowUp);
+          pendingFollowUp = null;
+        }
+      };
+      window.__scheduleFollowUp = function(delayMs, rpsValue) {
+        window.__cancelFollowUp();
+        pendingFollowUp = setTimeout(function() {
+          pendingFollowUp = null;
+          var input = document.getElementById('input-requestsPerSecond-value');
+          if (!input) return;
+          input.value = String(rpsValue);
+          input.dispatchEvent(new Event('input',  { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }, delayMs);
+      };
+
+      // Steady-state permits-per-sec reference line. For composite limiters
+      // this is the MIN child rate (the bottleneck tier), not the stale
+      // top-level permits/perSeconds — otherwise the "slower tier kicks in"
+      // story renders a misleading reference line.
+      window.__effectivePermitsPerSec = function(
+        type, topP, topS, cc,
+        c0p, c0s, c1p, c1s, c2p, c2s, c3p, c3s, c4p, c4s
+      ) {
+        if (type === 'composite') {
+          var n = Math.max(1, Number(cc) || 1);
+          var pairs = [[c0p, c0s], [c1p, c1s], [c2p, c2s], [c3p, c3s], [c4p, c4s]];
+          var min = Infinity;
+          for (var i = 0; i < n && i < pairs.length; i++) {
+            var p = Number(pairs[i][0]) || 0;
+            var s = Number(pairs[i][1]) || 1;
+            if (s > 0 && p > 0) { var r = p / s; if (r < min) min = r; }
+          }
+          return isFinite(min) ? min : 0;
+        }
+        return (Number(topP) || 0) / (Number(topS) || 1);
+      };
 
       var LOG_LIMIT = 50;
       function trimLog(list) {
@@ -824,11 +978,12 @@ private fun FlowContent.renderSliderValueInput(
     extraOnInput: String = "",
     extraOnChange: String = "\$sim.running && @patch('/simulations/' + \$sim.id)",
 ) {
-    val numericCoerce = if (integer) {
-        "Math.min($max, Math.max($min, Math.round(Number(\$$signal) || 0)))"
-    } else {
-        "Math.min($max, Math.max($min, Number(\$$signal) || 0))"
-    }
+    val numericCoerce =
+        if (integer) {
+            "Math.min($max, Math.max($min, Math.round(Number(\$$signal) || 0)))"
+        } else {
+            "Math.min($max, Math.max($min, Number(\$$signal) || 0))"
+        }
     val coerce = "\$$signal = $numericCoerce"
     val onChange = if (extraOnChange.isNotEmpty()) "($coerce, $extraOnChange)" else "($coerce)"
     input(classes = "slider-value-input") {
@@ -1015,355 +1170,18 @@ fun HTML.renderPageShell() {
                 }
             }
 
-            section("wizard-step") {
-                id = "step-limiter"
-                h2 { +"Choose your limiter:" }
-                div("limiter-buttons") {
-                    for (choice in LimiterChoices) {
-                        button(type = ButtonType.button) {
-                            id = "limiter-${choice.value}"
-                            val pickClick =
-                                "\$config.limiterType = '${choice.value}', " +
-                                    "\$ui.step = Math.max(\$ui.step, 2)"
-                            attributes["data-on-click"] =
-                                when (choice.value) {
-                                    "composite" ->
-                                        "($pickClick, " +
-                                            "\$ui.step = Math.max(\$ui.step, 3), " +
-                                            "\$sim.running && @patch('/simulations/' + \$sim.id))"
-                                    else -> "($pickClick)"
-                                }
-                            attributes["data-class-active"] =
-                                "\$config.limiterType === '${choice.value}'"
-                            +choice.label
-                        }
-                    }
+            section {
+                id = "presets-section"
+                h2 { +"Scenarios" }
+                p {
+                    id = "presets-hint"
+                    +"Click a scenario to start the simulation and watch the limiter in action."
                 }
-                renderFieldErrorSlot("limiterType")
-
-                div("composite-editor") {
-                    id = "composite-editor"
-                    attributes["data-show"] = "\$config.limiterType === 'composite'"
-
-                    for (index in 0 until 5) {
-                        renderCompositeChildRow(index)
-                    }
-
-                    div("composite-add-row") {
-                        button(type = ButtonType.button, classes = "composite-add") {
-                            id = "composite-add"
-                            attributes["data-on-click"] =
-                                "(\$config.compositeCount = Math.min(\$config.compositeCount + 1, 5), " +
-                                "\$sim.running && @patch('/simulations/' + \$sim.id))"
-                            attributes["data-attr-disabled"] = "\$config.compositeCount >= 5"
-                            +"+ Add limiter"
-                        }
-                    }
-
-                    renderOverflowRow(idPrefix = "composite")
-                }
-            }
-
-            section("wizard-step") {
-                id = "step-permits"
-                attributes["data-show"] =
-                    "\$ui.step >= 2 && \$config.limiterType !== 'composite'"
-                h2 { +"Permits:" }
-                input {
-                    id = "input-permits"
-                    type = InputType.range
-                    // Server rejects permits=0 for non-composite limiters, so the
-                    // control never lets the signal settle below 1 once the user
-                    // interacts. The signal stays at its initial 0 until then,
-                    // which is what keeps step 3 hidden on the fresh wizard.
-                    attributes["min"] = "1"
-                    attributes["max"] = "500"
-                    attributes["step"] = "1"
-                    attributes["data-bind"] = "config.permits"
-                    attributes["data-on-input"] =
-                        "\$config.permits > 0 && (\$ui.step = Math.max(\$ui.step, 3))"
-                    attributes["data-on-change"] =
-                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                }
-                div("child-slider-meta") {
-                    renderDurationToggle(
-                        idPrefix = "duration-top",
-                        permitsPath = "config.permits",
-                        perSecondsPath = "config.perSeconds",
-                    )
-                    span("slider-value") {
-                        renderSliderValueInput(
-                            id = "input-permits-value",
-                            signal = "config.permits",
-                            min = "1",
-                            max = "500",
-                            step = "1",
-                            integer = true,
-                            ariaLabel = "Permits value",
-                            extraOnInput =
-                                "\$config.permits > 0 && (\$ui.step = Math.max(\$ui.step, 3))",
-                        )
-                    }
-                }
-                renderFieldErrorSlot("permits")
-
-                div("child-slider warmup-row") {
-                    id = "warmup-row"
-                    attributes["data-show"] = "\$config.limiterType === 'smooth'"
-                    label {
-                        htmlFor = "input-warmupSeconds"
-                        +"Warmup (seconds)"
-                    }
-                    input {
-                        id = "input-warmupSeconds"
-                        type = InputType.range
-                        attributes["min"] = "0"
-                        attributes["max"] = "30"
-                        attributes["step"] = "0.5"
-                        attributes["data-bind"] = "config.warmupSeconds"
-                        attributes["data-on-change"] =
-                            "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                    }
-                    div("child-slider-meta") {
-                        span("slider-value") {
-                            renderSliderValueInput(
-                                id = "input-warmupSeconds-value",
-                                signal = "config.warmupSeconds",
-                                min = "0",
-                                max = "30",
-                                step = "0.5",
-                                integer = false,
-                                ariaLabel = "Warmup seconds value",
-                            )
-                            span("slider-value-unit") { +"s" }
-                        }
-                    }
-                    renderFieldErrorSlot("warmupSeconds")
-                }
-
-                renderOverflowRow(idPrefix = "permits")
-                renderFieldErrorSlot("overflowMode")
-            }
-
-            section("wizard-step") {
-                id = "step-traffic"
-                attributes["data-show"] = "\$ui.step >= 3"
-                h2 { +"Requests per sec:" }
-                input {
-                    id = "input-requestsPerSecond"
-                    type = InputType.range
-                    attributes["min"] = "0"
-                    attributes["max"] = "500"
-                    attributes["step"] = "1"
-                    attributes["data-bind"] = "config.requestsPerSecond"
-                    attributes["data-on-input"] =
-                        "\$config.requestsPerSecond > 0 && " +
-                        "(\$ui.step = Math.max(\$ui.step, 4))"
-                    attributes["data-on-change"] =
-                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                }
-                div("child-slider-meta") {
-                    span("slider-value") {
-                        renderSliderValueInput(
-                            id = "input-requestsPerSecond-value",
-                            signal = "config.requestsPerSecond",
-                            min = "0",
-                            max = "500",
-                            step = "1",
-                            integer = false,
-                            ariaLabel = "Requests per second value",
-                            extraOnInput =
-                                "\$config.requestsPerSecond > 0 && " +
-                                "(\$ui.step = Math.max(\$ui.step, 4))",
-                        )
-                        span("slider-value-unit") { +"req/s" }
-                    }
-                }
-                renderFieldErrorSlot("requestsPerSecond")
-
-                details("traffic-advanced") {
-                    summary { +"Advanced" }
-                    div("traffic-advanced-body") {
-                        div("child-slider") {
-                            div("child-slider-label-row") {
-                                label {
-                                    htmlFor = "input-serviceTimeMs"
-                                    +"Service time"
-                                }
-                                renderInfoTip(
-                                    "Base time each simulated request takes to process, " +
-                                        "in milliseconds. Higher values keep workers busy longer, " +
-                                        "lowering effective throughput and growing the queue.",
-                                )
-                            }
-                            input {
-                                id = "input-serviceTimeMs"
-                                type = InputType.range
-                                attributes["min"] = "0"
-                                attributes["max"] = "500"
-                                attributes["step"] = "5"
-                                attributes["data-bind"] = "config.serviceTimeMs"
-                                attributes["data-on-change"] =
-                                    "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                            }
-                            div("child-slider-meta") {
-                                span("slider-value") {
-                                    renderSliderValueInput(
-                                        id = "input-serviceTimeMs-value",
-                                        signal = "config.serviceTimeMs",
-                                        min = "0",
-                                        max = "500",
-                                        step = "5",
-                                        integer = true,
-                                        ariaLabel = "Service time milliseconds value",
-                                    )
-                                    span("slider-value-unit") { +"ms" }
-                                }
-                            }
-                            renderFieldErrorSlot("serviceTimeMs")
-                        }
-
-                        div("child-slider") {
-                            div("child-slider-label-row") {
-                                label {
-                                    htmlFor = "input-jitterMs"
-                                    +"Jitter"
-                                }
-                                renderInfoTip(
-                                    "Random variance added to each request's service time, " +
-                                        "from 0 up to this value. Simulates real-world latency " +
-                                        "noise so requests don't finish in lockstep.",
-                                )
-                            }
-                            input {
-                                id = "input-jitterMs"
-                                type = InputType.range
-                                attributes["min"] = "0"
-                                attributes["max"] = "200"
-                                attributes["step"] = "1"
-                                attributes["data-bind"] = "config.jitterMs"
-                                attributes["data-on-change"] =
-                                    "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                            }
-                            div("child-slider-meta") {
-                                span("slider-value") {
-                                    span("slider-value-unit") { +"±" }
-                                    renderSliderValueInput(
-                                        id = "input-jitterMs-value",
-                                        signal = "config.jitterMs",
-                                        min = "0",
-                                        max = "200",
-                                        step = "1",
-                                        integer = true,
-                                        ariaLabel = "Jitter milliseconds value",
-                                    )
-                                    span("slider-value-unit") { +"ms" }
-                                }
-                            }
-                            renderFieldErrorSlot("jitterMs")
-                        }
-
-                        div("child-slider") {
-                            div("child-slider-label-row") {
-                                label {
-                                    htmlFor = "input-failureRate"
-                                    +"Failure rate"
-                                }
-                                renderInfoTip(
-                                    "Chance each processed request is marked as a failure " +
-                                        "(500 response). Failed requests still consume a permit " +
-                                        "and a worker slot — they just don't count as successful work.",
-                                )
-                            }
-                            input {
-                                id = "input-failureRate"
-                                type = InputType.range
-                                attributes["min"] = "0"
-                                attributes["max"] = "1"
-                                attributes["step"] = "0.01"
-                                attributes["data-bind"] = "config.failureRate"
-                                attributes["data-on-input"] =
-                                    "\$ui.failureRatePct = Math.round(\$config.failureRate * 100)"
-                                attributes["data-on-change"] =
-                                    "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                            }
-                            div("child-slider-meta") {
-                                span("slider-value") {
-                                    input(classes = "slider-value-input") {
-                                        id = "input-failureRate-value"
-                                        type = InputType.number
-                                        attributes["min"] = "0"
-                                        attributes["max"] = "100"
-                                        attributes["step"] = "1"
-                                        attributes["data-bind"] = "ui.failureRatePct"
-                                        attributes["aria-label"] = "Failure rate percent value"
-                                        attributes["data-on-input"] =
-                                            "\$config.failureRate = " +
-                                            "Math.min(1, Math.max(0, (Number(\$ui.failureRatePct) || 0) / 100))"
-                                        attributes["data-on-change"] =
-                                            "(\$ui.failureRatePct = Math.min(100, Math.max(0, " +
-                                            "Math.round(Number(\$ui.failureRatePct) || 0))), " +
-                                            "\$config.failureRate = \$ui.failureRatePct / 100, " +
-                                            "\$sim.running && @patch('/simulations/' + \$sim.id))"
-                                    }
-                                    span("slider-value-unit") { +"%" }
-                                }
-                            }
-                            renderFieldErrorSlot("failureRate")
-                        }
-
-                        div("child-slider") {
-                            div("child-slider-label-row") {
-                                label {
-                                    htmlFor = "input-workerConcurrency"
-                                    +"Worker concurrency"
-                                }
-                                renderInfoTip(
-                                    "Number of parallel workers pulling from the queue. Acts as " +
-                                        "a hard ceiling on in-flight requests, independent of the " +
-                                        "limiter — too few workers will bottleneck even a generous limit.",
-                                )
-                            }
-                            input {
-                                id = "input-workerConcurrency"
-                                type = InputType.range
-                                attributes["min"] = "1"
-                                attributes["max"] = "200"
-                                attributes["step"] = "1"
-                                attributes["data-bind"] = "config.workerConcurrency"
-                                attributes["data-on-change"] =
-                                    "\$sim.running && @patch('/simulations/' + \$sim.id)"
-                            }
-                            div("child-slider-meta") {
-                                span("slider-value") {
-                                    renderSliderValueInput(
-                                        id = "input-workerConcurrency-value",
-                                        signal = "config.workerConcurrency",
-                                        min = "1",
-                                        max = "200",
-                                        step = "1",
-                                        integer = true,
-                                        ariaLabel = "Worker concurrency value",
-                                    )
-                                }
-                            }
-                            renderFieldErrorSlot("workerConcurrency")
-                        }
-                    }
-                }
-            }
-
-            section("wizard-step") {
-                id = "step-start"
-                attributes["data-show"] = "\$ui.step >= 4"
-                div("start-row") {
-                    renderLifecycleControlsSlot()
-                }
+                renderPresetsPanel()
             }
 
             div {
                 id = "run-panels"
-                attributes["data-show"] = "\$ui.step >= 5"
 
                 section {
                     id = "status-panel"
@@ -1373,6 +1191,7 @@ fun HTML.renderPageShell() {
                             attributes["data-text"] = "'id: ' + (\$sim.id || '—')"
                             +"id: —"
                         }
+                        renderLifecycleControlsSlot()
                     }
                 }
 
@@ -1473,27 +1292,355 @@ fun HTML.renderPageShell() {
                         }
                     }
                 }
+            }
 
-                section {
-                    id = "status-log-panel"
-                    h2 { +"Status Log" }
-                    renderStatusLogSlot()
-                }
+            details {
+                id = "tweak-panel"
+                summary { +"Tweak config" }
 
-                section {
-                    id = "log-panel"
-                    h2 { +"Response Log" }
-                    renderLogListSlot()
-                }
-
-                section("page-errors") {
-                    id = "page-errors"
-                    h2 { +"Error Log" }
-                    renderFormErrorsSlot()
-                    div("stream-errors") {
-                        id = "errors-stream"
-                        attributes["data-text"] = "\$errors.stream || ''"
+                div("tweak-section") {
+                    id = "tweak-limiter"
+                    h3 { +"Limiter" }
+                    div("limiter-buttons") {
+                        for (choice in LimiterChoices) {
+                            button(type = ButtonType.button) {
+                                id = "limiter-${choice.value}"
+                                attributes["data-on-click"] =
+                                    "(\$config.limiterType = '${choice.value}', " +
+                                    "\$sim.running && @patch('/simulations/' + \$sim.id))"
+                                attributes["data-class-active"] =
+                                    "\$config.limiterType === '${choice.value}'"
+                                +choice.label
+                            }
+                        }
                     }
+                    renderFieldErrorSlot("limiterType")
+
+                    div("composite-editor") {
+                        id = "composite-editor"
+                        attributes["data-show"] = "\$config.limiterType === 'composite'"
+
+                        for (index in 0 until 5) {
+                            renderCompositeChildRow(index)
+                        }
+
+                        div("composite-add-row") {
+                            button(type = ButtonType.button, classes = "composite-add") {
+                                id = "composite-add"
+                                attributes["data-on-click"] =
+                                    "(\$config.compositeCount = Math.min(\$config.compositeCount + 1, 5), " +
+                                    "\$sim.running && @patch('/simulations/' + \$sim.id))"
+                                attributes["data-attr-disabled"] = "\$config.compositeCount >= 5"
+                                +"+ Add limiter"
+                            }
+                        }
+
+                        renderOverflowRow(idPrefix = "composite")
+                    }
+                }
+
+                div("tweak-section") {
+                    id = "tweak-permits"
+                    attributes["data-show"] = "\$config.limiterType !== 'composite'"
+                    h3 { +"Permits & overflow" }
+                    input {
+                        id = "input-permits"
+                        type = InputType.range
+                        // Server rejects permits=0 for non-composite limiters, so
+                        // the slider is clamped to [1, 500].
+                        attributes["min"] = "1"
+                        attributes["max"] = "500"
+                        attributes["step"] = "1"
+                        attributes["data-bind"] = "config.permits"
+                        attributes["data-on-change"] =
+                            "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                    }
+                    div("child-slider-meta") {
+                        renderDurationToggle(
+                            idPrefix = "duration-top",
+                            permitsPath = "config.permits",
+                            perSecondsPath = "config.perSeconds",
+                        )
+                        span("slider-value") {
+                            renderSliderValueInput(
+                                id = "input-permits-value",
+                                signal = "config.permits",
+                                min = "1",
+                                max = "500",
+                                step = "1",
+                                integer = true,
+                                ariaLabel = "Permits value",
+                            )
+                        }
+                    }
+                    renderFieldErrorSlot("permits")
+
+                    div("child-slider warmup-row") {
+                        id = "warmup-row"
+                        attributes["data-show"] = "\$config.limiterType === 'smooth'"
+                        label {
+                            htmlFor = "input-warmupSeconds"
+                            +"Warmup (seconds)"
+                        }
+                        input {
+                            id = "input-warmupSeconds"
+                            type = InputType.range
+                            attributes["min"] = "0"
+                            attributes["max"] = "30"
+                            attributes["step"] = "0.5"
+                            attributes["data-bind"] = "config.warmupSeconds"
+                            attributes["data-on-change"] =
+                                "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                        }
+                        div("child-slider-meta") {
+                            span("slider-value") {
+                                renderSliderValueInput(
+                                    id = "input-warmupSeconds-value",
+                                    signal = "config.warmupSeconds",
+                                    min = "0",
+                                    max = "30",
+                                    step = "0.5",
+                                    integer = false,
+                                    ariaLabel = "Warmup seconds value",
+                                )
+                                span("slider-value-unit") { +"s" }
+                            }
+                        }
+                        renderFieldErrorSlot("warmupSeconds")
+                    }
+
+                    renderOverflowRow(idPrefix = "permits")
+                    renderFieldErrorSlot("overflowMode")
+                }
+
+                div("tweak-section") {
+                    id = "tweak-traffic"
+                    h3 { +"Traffic" }
+                    input {
+                        id = "input-requestsPerSecond"
+                        type = InputType.range
+                        attributes["min"] = "0"
+                        attributes["max"] = "500"
+                        attributes["step"] = "1"
+                        attributes["data-bind"] = "config.requestsPerSecond"
+                        // Manual rps drag invalidates any pending burst-drain
+                        // follow-up: otherwise the preset's delayed PATCH
+                        // would clobber the user's drag mid-scenario.
+                        attributes["data-on-input"] =
+                            "window.__cancelFollowUp && window.__cancelFollowUp()"
+                        attributes["data-on-change"] =
+                            "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                    }
+                    div("child-slider-meta") {
+                        span("slider-value") {
+                            renderSliderValueInput(
+                                id = "input-requestsPerSecond-value",
+                                signal = "config.requestsPerSecond",
+                                min = "0",
+                                max = "500",
+                                step = "1",
+                                integer = false,
+                                ariaLabel = "Requests per second value",
+                                extraOnInput =
+                                    "window.__cancelFollowUp && window.__cancelFollowUp()",
+                            )
+                            span("slider-value-unit") { +"req/s" }
+                        }
+                    }
+                    renderFieldErrorSlot("requestsPerSecond")
+
+                    details("traffic-advanced") {
+                        summary { +"Advanced" }
+                        div("traffic-advanced-body") {
+                            div("child-slider") {
+                                div("child-slider-label-row") {
+                                    label {
+                                        htmlFor = "input-serviceTimeMs"
+                                        +"Service time"
+                                    }
+                                    renderInfoTip(
+                                        "Base time each simulated request takes to process, " +
+                                            "in milliseconds. Higher values keep workers busy longer, " +
+                                            "lowering effective throughput and growing the queue.",
+                                    )
+                                }
+                                input {
+                                    id = "input-serviceTimeMs"
+                                    type = InputType.range
+                                    attributes["min"] = "0"
+                                    attributes["max"] = "500"
+                                    attributes["step"] = "5"
+                                    attributes["data-bind"] = "config.serviceTimeMs"
+                                    attributes["data-on-change"] =
+                                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                                }
+                                div("child-slider-meta") {
+                                    span("slider-value") {
+                                        renderSliderValueInput(
+                                            id = "input-serviceTimeMs-value",
+                                            signal = "config.serviceTimeMs",
+                                            min = "0",
+                                            max = "500",
+                                            step = "5",
+                                            integer = true,
+                                            ariaLabel = "Service time milliseconds value",
+                                        )
+                                        span("slider-value-unit") { +"ms" }
+                                    }
+                                }
+                                renderFieldErrorSlot("serviceTimeMs")
+                            }
+
+                            div("child-slider") {
+                                div("child-slider-label-row") {
+                                    label {
+                                        htmlFor = "input-jitterMs"
+                                        +"Jitter"
+                                    }
+                                    renderInfoTip(
+                                        "Random variance added to each request's service time, " +
+                                            "from 0 up to this value. Simulates real-world latency " +
+                                            "noise so requests don't finish in lockstep.",
+                                    )
+                                }
+                                input {
+                                    id = "input-jitterMs"
+                                    type = InputType.range
+                                    attributes["min"] = "0"
+                                    attributes["max"] = "200"
+                                    attributes["step"] = "1"
+                                    attributes["data-bind"] = "config.jitterMs"
+                                    attributes["data-on-change"] =
+                                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                                }
+                                div("child-slider-meta") {
+                                    span("slider-value") {
+                                        span("slider-value-unit") { +"±" }
+                                        renderSliderValueInput(
+                                            id = "input-jitterMs-value",
+                                            signal = "config.jitterMs",
+                                            min = "0",
+                                            max = "200",
+                                            step = "1",
+                                            integer = true,
+                                            ariaLabel = "Jitter milliseconds value",
+                                        )
+                                        span("slider-value-unit") { +"ms" }
+                                    }
+                                }
+                                renderFieldErrorSlot("jitterMs")
+                            }
+
+                            div("child-slider") {
+                                div("child-slider-label-row") {
+                                    label {
+                                        htmlFor = "input-failureRate"
+                                        +"Failure rate"
+                                    }
+                                    renderInfoTip(
+                                        "Chance each processed request is marked as a failure " +
+                                            "(500 response). Failed requests still consume a permit " +
+                                            "and a worker slot — they just don't count as successful work.",
+                                    )
+                                }
+                                input {
+                                    id = "input-failureRate"
+                                    type = InputType.range
+                                    attributes["min"] = "0"
+                                    attributes["max"] = "1"
+                                    attributes["step"] = "0.01"
+                                    attributes["data-bind"] = "config.failureRate"
+                                    attributes["data-on-input"] =
+                                        "\$ui.failureRatePct = Math.round(\$config.failureRate * 100)"
+                                    attributes["data-on-change"] =
+                                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                                }
+                                div("child-slider-meta") {
+                                    span("slider-value") {
+                                        input(classes = "slider-value-input") {
+                                            id = "input-failureRate-value"
+                                            type = InputType.number
+                                            attributes["min"] = "0"
+                                            attributes["max"] = "100"
+                                            attributes["step"] = "1"
+                                            attributes["data-bind"] = "ui.failureRatePct"
+                                            attributes["aria-label"] = "Failure rate percent value"
+                                            attributes["data-on-input"] =
+                                                "\$config.failureRate = " +
+                                                "Math.min(1, Math.max(0, (Number(\$ui.failureRatePct) || 0) / 100))"
+                                            attributes["data-on-change"] =
+                                                "(\$ui.failureRatePct = Math.min(100, Math.max(0, " +
+                                                "Math.round(Number(\$ui.failureRatePct) || 0))), " +
+                                                "\$config.failureRate = \$ui.failureRatePct / 100, " +
+                                                "\$sim.running && @patch('/simulations/' + \$sim.id))"
+                                        }
+                                        span("slider-value-unit") { +"%" }
+                                    }
+                                }
+                                renderFieldErrorSlot("failureRate")
+                            }
+
+                            div("child-slider") {
+                                div("child-slider-label-row") {
+                                    label {
+                                        htmlFor = "input-workerConcurrency"
+                                        +"Worker concurrency"
+                                    }
+                                    renderInfoTip(
+                                        "Number of parallel workers pulling from the queue. Acts as " +
+                                            "a hard ceiling on in-flight requests, independent of the " +
+                                            "limiter — too few workers will bottleneck even a generous limit.",
+                                    )
+                                }
+                                input {
+                                    id = "input-workerConcurrency"
+                                    type = InputType.range
+                                    attributes["min"] = "1"
+                                    attributes["max"] = "200"
+                                    attributes["step"] = "1"
+                                    attributes["data-bind"] = "config.workerConcurrency"
+                                    attributes["data-on-change"] =
+                                        "\$sim.running && @patch('/simulations/' + \$sim.id)"
+                                }
+                                div("child-slider-meta") {
+                                    span("slider-value") {
+                                        renderSliderValueInput(
+                                            id = "input-workerConcurrency-value",
+                                            signal = "config.workerConcurrency",
+                                            min = "1",
+                                            max = "200",
+                                            step = "1",
+                                            integer = true,
+                                            ariaLabel = "Worker concurrency value",
+                                        )
+                                    }
+                                }
+                                renderFieldErrorSlot("workerConcurrency")
+                            }
+                        }
+                    }
+                }
+            }
+
+            section {
+                id = "status-log-panel"
+                h2 { +"Status Log" }
+                renderStatusLogSlot()
+            }
+
+            section {
+                id = "log-panel"
+                h2 { +"Response Log" }
+                renderLogListSlot()
+            }
+
+            section("page-errors") {
+                id = "page-errors"
+                h2 { +"Error Log" }
+                renderFormErrorsSlot()
+                div("stream-errors") {
+                    id = "errors-stream"
+                    attributes["data-text"] = "\$errors.stream || ''"
                 }
             }
         }

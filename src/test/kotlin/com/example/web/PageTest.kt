@@ -17,93 +17,235 @@ class PageTest {
     fun `shell contains page-root with initial signals`() {
         assertTrue("id=\"page-root\"" in rendered)
         assertTrue("data-signals" in rendered)
-        assertTrue("&quot;step&quot;: 1" in rendered, "initial ui.step missing")
+        // Fresh signals seed the UI to a working "under the limit" config so the
+        // user can hit Start immediately even without picking a preset.
+        assertTrue("&quot;limiterType&quot;: &quot;bursty&quot;" in rendered, "initial limiterType default missing")
+        assertTrue("&quot;permits&quot;: 20" in rendered, "initial permits default missing")
+        assertTrue("&quot;requestsPerSecond&quot;: 10" in rendered, "initial rps default missing")
+        // ui.step signal was removed with the wizard.
+        assertTrue("&quot;step&quot;" !in rendered, "ui.step signal should no longer exist")
         assertTrue("idle" in rendered)
     }
 
     @Test
-    fun `shell includes inline stylesheet for wizard layout`() {
+    fun `shell includes inline stylesheet for layout`() {
         assertTrue("<style>" in rendered, "style tag missing")
-        assertTrue(".wizard-step" in rendered, "wizard-step styles missing")
-        assertTrue(".limiter-buttons" in rendered, "limiter-buttons styles missing")
+        assertTrue(".preset-button" in rendered, "preset-button styles missing")
+        assertTrue("#tweak-panel" in rendered, "tweak-panel styles missing")
         assertTrue("input[type=\"range\"]" in rendered, "range input styles missing")
     }
 
     @Test
-    fun `step 1 offers a limiter choice with button options`() {
-        val step =
+    fun `presets panel is the primary entry point with a-ha scenarios`() {
+        assertTrue("id=\"presets-panel\"" in rendered, "presets panel missing")
+        for (id in listOf("under", "deny", "queue", "burst-drain", "smooth", "composite")) {
+            assertTrue("id=\"preset-$id\"" in rendered, "missing preset $id")
+        }
+        // Each preset button exposes a descriptive label so first-time visitors
+        // can scan scenarios without reading the slider rows.
+        assertTrue("Exceed the limit · Deny" in rendered, "deny preset label missing")
+        assertTrue("Burst then drain" in rendered, "burst-drain preset label missing")
+    }
+
+    @Test
+    fun `preset click handlers set all config signals and auto-start`() {
+        // The "deny" preset should set overflowMode=reject so a first-time click
+        // actually produces visible denials — that is the a-ha moment.
+        val denyChunk =
             rendered
-                .substringAfter("id=\"step-limiter\"")
-                .substringBefore("id=\"step-permits\"")
-        assertTrue("Choose your limiter:" in step, "step heading missing")
-        for (value in listOf("bursty", "smooth", "composite")) {
-            assertTrue("id=\"limiter-$value\"" in step, "missing limiter button $value")
+                .substringAfter("id=\"preset-deny\"")
+                .substringBefore("id=\"preset-queue\"")
+        assertTrue("\$config.overflowMode = 'reject'" in denyChunk, "deny preset must set overflowMode=reject")
+        assertTrue("\$config.requestsPerSecond = 40" in denyChunk, "deny preset rps missing")
+        assertTrue("\$config.permits = 10" in denyChunk, "deny preset permits missing")
+        // POST on idle click (no running sim), PATCH when already running.
+        assertTrue("!\$sim.running &amp;&amp; @post('/simulations')" in denyChunk, "preset should auto-POST when idle")
+        assertTrue("\$sim.running &amp;&amp; @patch('/simulations/' + \$sim.id)" in denyChunk, "preset should PATCH when running")
+    }
+
+    @Test
+    fun `every preset click cancels any pending burst-drain follow-up`() {
+        // Regression: clicking Burst-then-drain and then another preset within
+        // 5s used to let the old timeout clobber the new scenario's rps. Every
+        // preset click must cancel the pending follow-up up front.
+        for (id in listOf("under", "deny", "queue", "burst-drain", "smooth", "composite")) {
+            val chunk =
+                rendered
+                    .substringAfter("id=\"preset-$id\"")
+                    .substringBefore("</button>")
             assertTrue(
-                "\$config.limiterType = '$value'" in step,
+                "window.__cancelFollowUp &amp;&amp; window.__cancelFollowUp()" in chunk,
+                "preset $id should call __cancelFollowUp before applying its config",
+            )
+        }
+    }
+
+    @Test
+    fun `burst-drain preset schedules a follow-up via window helper`() {
+        val chunk =
+            rendered
+                .substringAfter("id=\"preset-burst-drain\"")
+                .substringBefore("id=\"preset-smooth\"")
+        assertTrue("window.__scheduleFollowUp(5000, 5)" in chunk, "burst-drain should schedule a follow-up drop to 5 rps")
+    }
+
+    @Test
+    fun `manual rps slider input cancels pending follow-up`() {
+        // Regression: dragging the rps slider during a burst-drain window
+        // must cancel the pending drop, otherwise the delayed PATCH clobbers
+        // the user's manual tweak.
+        val section =
+            rendered
+                .substringAfter("id=\"tweak-traffic\"")
+                .substringBefore("id=\"status-log-panel\"")
+        // Both the range input and the number input must cancel on input.
+        val rangeBlock =
+            section
+                .substringAfter("id=\"input-requestsPerSecond\"")
+                .substringBefore("</input>")
+        assertTrue(
+            "window.__cancelFollowUp &amp;&amp; window.__cancelFollowUp()" in rangeBlock,
+            "rps range slider should cancel pending follow-up on input",
+        )
+        val numberBlock =
+            section
+                .substringAfter("id=\"input-requestsPerSecond-value\"")
+                .substringBefore("</span>")
+        assertTrue(
+            "window.__cancelFollowUp &amp;&amp; window.__cancelFollowUp()" in numberBlock,
+            "rps number input should cancel pending follow-up on input",
+        )
+    }
+
+    @Test
+    fun `start and stop buttons cancel pending follow-up`() {
+        val startBlock =
+            rendered
+                .substringAfter("id=\"start-button\"")
+                .substringBefore("</button>")
+        assertTrue(
+            "window.__cancelFollowUp &amp;&amp; window.__cancelFollowUp()" in startBlock,
+            "Start button should cancel pending follow-up",
+        )
+        val stopBlock =
+            rendered
+                .substringAfter("id=\"stop-button\"")
+                .substringBefore("</button>")
+        assertTrue(
+            "window.__cancelFollowUp &amp;&amp; window.__cancelFollowUp()" in stopBlock,
+            "Stop button should cancel pending follow-up",
+        )
+    }
+
+    @Test
+    fun `chart script defines a cancel and effective permits helper`() {
+        assertTrue("window.__cancelFollowUp" in rendered, "__cancelFollowUp helper missing")
+        assertTrue("window.__effectivePermitsPerSec" in rendered, "__effectivePermitsPerSec helper missing")
+    }
+
+    @Test
+    fun `chart mount routes permits-per-sec through effective helper`() {
+        // For composite presets, the reference line must reflect the slowest
+        // child's steady-state rate, not the stale top-level permits/perSeconds.
+        // This is what makes the "slower tier kicks in" story visually land.
+        assertTrue(
+            "window.__effectivePermitsPerSec(" in rendered,
+            "chart push must route through __effectivePermitsPerSec",
+        )
+        assertTrue(
+            "\$config.limiterType, \$config.permits, \$config.perSeconds, \$config.compositeCount" in rendered,
+            "chart push helper must receive limiter type and composite count",
+        )
+        assertTrue(
+            "\$config.child0Permits, \$config.child0PerSeconds" in rendered &&
+                "\$config.child4Permits, \$config.child4PerSeconds" in rendered,
+            "chart push must pass all 5 composite children",
+        )
+    }
+
+    @Test
+    fun `presets reset baseline fields so prior tweaks cannot leak across scenarios`() {
+        // Regression: lowering workerConcurrency in the Tweak panel used to
+        // bleed into subsequent presets, so "Under the limit" could render
+        // artificially bottlenecked. Every preset must reset the shared
+        // baseline (service time, jitter, failure rate, worker concurrency,
+        // api target) to canonical defaults.
+        for (id in listOf("under", "deny", "queue", "burst-drain", "smooth", "composite")) {
+            val chunk =
+                rendered
+                    .substringAfter("id=\"preset-$id\"")
+                    .substringBefore("</button>")
+            assertTrue("\$config.serviceTimeMs = 50" in chunk, "preset $id should reset serviceTimeMs")
+            assertTrue("\$config.jitterMs = 20" in chunk, "preset $id should reset jitterMs")
+            assertTrue("\$config.failureRate = 0.0" in chunk, "preset $id should reset failureRate")
+            assertTrue("\$config.workerConcurrency = 50" in chunk, "preset $id should reset workerConcurrency")
+            assertTrue("\$config.apiTarget = 'none'" in chunk, "preset $id should reset apiTarget")
+        }
+    }
+
+    @Test
+    fun `tweak panel is a collapsible details element with all config sections`() {
+        assertTrue("id=\"tweak-panel\"" in rendered, "tweak-panel missing")
+        val tweak =
+            rendered
+                .substringAfter("id=\"tweak-panel\"")
+                .substringBefore("id=\"status-log-panel\"")
+        assertTrue("<summary>Tweak config</summary>" in tweak, "tweak-panel should have a summary header")
+        assertTrue("id=\"tweak-limiter\"" in tweak, "tweak limiter section missing")
+        assertTrue("id=\"tweak-permits\"" in tweak, "tweak permits section missing")
+        assertTrue("id=\"tweak-traffic\"" in tweak, "tweak traffic section missing")
+        // No $ui.step gating anywhere.
+        assertTrue("\$ui.step" !in tweak, "tweak panel should not reference \$ui.step")
+    }
+
+    @Test
+    fun `tweak-limiter section offers all three limiter choices`() {
+        val section =
+            rendered
+                .substringAfter("id=\"tweak-limiter\"")
+                .substringBefore("id=\"tweak-permits\"")
+        for (value in listOf("bursty", "smooth", "composite")) {
+            assertTrue("id=\"limiter-$value\"" in section, "missing limiter button $value")
+            assertTrue(
+                "\$config.limiterType = '$value'" in section,
                 "limiter button $value should set limiterType",
             )
         }
+        // Choosing a limiter while running should hot-swap via PATCH.
         assertTrue(
-            "\$ui.step = Math.max(\$ui.step, 2)" in step,
-            "limiter button should advance wizard step",
+            "\$sim.running &amp;&amp; @patch('/simulations/' + \$sim.id)" in section,
+            "limiter choice should PATCH live sim",
         )
     }
 
     @Test
-    fun `step 2 reveals permits slider after limiter is chosen`() {
-        val step =
+    fun `tweak-permits section hides for composite and exposes permits slider`() {
+        val section =
             rendered
-                .substringAfter("id=\"step-permits\"")
-                .substringBefore("id=\"step-traffic\"")
-        assertTrue("Permits:" in step, "step heading missing")
+                .substringAfter("id=\"tweak-permits\"")
+                .substringBefore("id=\"tweak-traffic\"")
         assertTrue(
-            "\$ui.step &gt;= 2" in step && "limiterType !== 'composite'" in step,
-            "step-permits should be gated on step>=2 and hidden for composite",
+            "data-show=\"\$config.limiterType !== 'composite'\"" in section,
+            "tweak-permits should be hidden for composite",
         )
-        assertTrue("id=\"input-permits\"" in step, "permits slider missing")
-        assertTrue("type=\"range\"" in step, "permits control should be a range slider")
-        // Server validation requires permits > 0 for non-composite limiters, so
-        // the range slider is bounded at 1 and the initial signal value of 0
-        // keeps the wizard at step 2 until the user actually moves the control.
+        assertTrue("id=\"input-permits\"" in section, "permits slider missing")
         assertTrue(
-            "id=\"input-permits\" type=\"range\" min=\"1\" max=\"500\"" in step,
+            "id=\"input-permits\" type=\"range\" min=\"1\" max=\"500\"" in section,
             "permits range slider should have min=1",
         )
-        assertTrue("data-bind=\"config.permits\"" in step, "permits slider should bind")
-        assertTrue(
-            "\$config.permits &gt; 0" in step &&
-                "\$ui.step = Math.max(\$ui.step, 3)" in step,
-            "step-permits should advance only once permits > 0",
-        )
+        assertTrue("data-bind=\"config.permits\"" in section, "permits slider should bind")
     }
 
     @Test
-    fun `step 3 reveals traffic slider after permits`() {
-        val step =
+    fun `tweak-traffic section exposes rps slider and advanced fields`() {
+        val section =
             rendered
-                .substringAfter("id=\"step-traffic\"")
-                .substringBefore("id=\"step-start\"")
-        assertTrue("Requests per sec:" in step, "step heading missing")
-        assertTrue("data-show=\"\$ui.step &gt;= 3\"" in step, "step-traffic should be gated")
-        assertTrue("id=\"input-requestsPerSecond\"" in step, "rps slider missing")
-        assertTrue("type=\"range\"" in step, "rps control should be a range slider")
-        assertTrue("min=\"0\"" in step, "rps slider should start at 0")
-        assertTrue("data-bind=\"config.requestsPerSecond\"" in step, "rps slider should bind")
-        assertTrue(
-            "\$config.requestsPerSecond &gt; 0" in step &&
-                "\$ui.step = Math.max(\$ui.step, 4)" in step,
-            "step-traffic should advance only once requestsPerSecond > 0",
-        )
-    }
-
-    @Test
-    fun `step 3 exposes advanced traffic sliders for service time jitter failure rate and worker concurrency`() {
-        val step =
-            rendered
-                .substringAfter("id=\"step-traffic\"")
-                .substringBefore("id=\"step-start\"")
-        assertTrue("traffic-advanced" in step, "advanced disclosure wrapper missing")
-        assertTrue("<summary>Advanced</summary>" in step, "advanced summary label missing")
+                .substringAfter("id=\"tweak-traffic\"")
+                .substringBefore("id=\"tweak-panel\"") // not-found; last-ish substring
+        assertTrue("id=\"input-requestsPerSecond\"" in section, "rps slider missing")
+        assertTrue("data-bind=\"config.requestsPerSecond\"" in section, "rps slider bind missing")
+        assertTrue("traffic-advanced" in section, "advanced disclosure wrapper missing")
+        assertTrue("<summary>Advanced</summary>" in section, "advanced summary label missing")
         val fields =
             listOf(
                 "serviceTimeMs" to "config.serviceTimeMs",
@@ -112,40 +254,34 @@ class PageTest {
                 "workerConcurrency" to "config.workerConcurrency",
             )
         for ((field, signal) in fields) {
-            assertTrue("id=\"input-$field\"" in step, "$field slider missing")
-            assertTrue("data-bind=\"$signal\"" in step, "$field bind missing")
-            assertTrue(
-                "id=\"${fieldErrorId(field)}\"" in step,
-                "$field error slot missing",
-            )
+            assertTrue("id=\"input-$field\"" in section, "$field slider missing")
+            assertTrue("data-bind=\"$signal\"" in section, "$field bind missing")
         }
     }
 
     @Test
-    fun `step 4 reveals start button`() {
-        val step =
+    fun `status panel hosts the lifecycle controls and is always visible`() {
+        val section =
             rendered
-                .substringAfter("id=\"step-start\"")
-                .substringBefore("id=\"run-panels\"")
-        assertTrue("data-show=\"\$ui.step &gt;= 4\"" in step, "step-start should be gated")
-        assertTrue("id=\"$LIFECYCLE_CONTROLS_ID\"" in step, "lifecycle-controls slot missing")
-        assertTrue("id=\"start-button\"" in step, "start button missing")
-        assertTrue("id=\"stop-button\"" in step, "stop button missing")
+                .substringAfter("id=\"status-panel\"")
+                .substringBefore("id=\"chart-panel\"")
+        assertTrue("id=\"$LIFECYCLE_CONTROLS_ID\"" in section, "lifecycle-controls slot missing")
+        assertTrue("id=\"start-button\"" in section, "start button missing")
+        assertTrue("id=\"stop-button\"" in section, "stop button missing")
+        // Run panels must not be gated on \$ui.step anymore — they are persistent
+        // so the chart is visible before the user clicks anything.
+        assertTrue("\$ui.step" !in section, "status panel should not reference \$ui.step")
     }
 
     @Test
-    fun `run panels become visible once start is clicked and stay visible after stop`() {
+    fun `run panels chart and stats render without ui step gating`() {
         val runPanels =
             rendered
                 .substringAfter("id=\"run-panels\"")
-        assertTrue(
-            "data-show=\"\$ui.step &gt;= 5\"" in runPanels,
-            "run-panels should be gated on ui.step >= 5 so they persist after Stop",
-        )
+                .substringBefore("id=\"tweak-panel\"")
+        assertTrue("\$ui.step" !in runPanels, "run-panels should not be gated on \$ui.step")
         assertTrue("id=\"stats-panel\"" in runPanels)
         assertTrue("id=\"chart-panel\"" in runPanels)
-        assertTrue("id=\"log-panel\"" in runPanels)
-        assertTrue("id=\"status-log-panel\"" in runPanels)
     }
 
     @Test
@@ -169,6 +305,15 @@ class PageTest {
     }
 
     @Test
+    fun `chart script pushes denied rate as a distinct dataset`() {
+        // Regression: the "Exceed · Deny" preset must produce a visible red line
+        // on the chart, which requires the chart push to read rejectRate.
+        assertTrue("rejectRate: \$stats.rejectRate" in rendered, "chart push should include rejectRate")
+        assertTrue("'Denied/sec'" in rendered, "chart should have a Denied/sec dataset")
+        assertTrue("s.rejectRate" in rendered, "chart push handler should forward rejectRate")
+    }
+
+    @Test
     fun `run panels contain chart mount stream anchor log slot and status log slot`() {
         assertTrue("id=\"$CHART_MOUNT_ID\"" in rendered)
         assertTrue("id=\"$STREAM_ANCHOR_ID\"" in rendered)
@@ -178,13 +323,12 @@ class PageTest {
 
     @Test
     fun `status log panel renders above response log panel`() {
-        val runPanels = rendered.substringAfter("id=\"run-panels\"")
-        val statusIdx = runPanels.indexOf("id=\"status-log-panel\"")
-        val logIdx = runPanels.indexOf("id=\"log-panel\"")
+        val statusIdx = rendered.indexOf("id=\"status-log-panel\"")
+        val logIdx = rendered.indexOf("id=\"log-panel\"")
         assertTrue(statusIdx > 0, "status-log-panel should exist")
         assertTrue(logIdx > 0, "log-panel should exist")
         assertTrue(statusIdx < logIdx, "status-log-panel should render before log-panel")
-        assertTrue("Status Log" in runPanels, "status log heading missing")
+        assertTrue("Status Log" in rendered, "status log heading missing")
     }
 
     @Test
@@ -204,7 +348,7 @@ class PageTest {
     }
 
     @Test
-    fun `status badge is present inside run panels`() {
+    fun `status badge is present inside status panel`() {
         assertTrue("id=\"$STATUS_BADGE_ID\"" in rendered)
     }
 
@@ -234,7 +378,6 @@ class PageTest {
                 "$id missing aria-label '$label'",
             )
         }
-        // Every slider-value-input should be type=number so typing bypasses the slider step.
         assertTrue(
             "class=\"slider-value-input\" id=\"input-permits-value\" type=\"number\"" in rendered,
             "permits value input should be type=number",
@@ -243,21 +386,16 @@ class PageTest {
 
     @Test
     fun `slider value inputs clamp and coerce on change`() {
-        // Integer field: coercion rounds and clamps to min..max. serviceTimeMs
-        // is the integer field with an inclusive 0 lower bound (permits is
-        // special-cased to >= 1 because the server rejects 0).
         assertTrue(
             "\$config.serviceTimeMs = Math.min(500, Math.max(0, Math.round(" +
                 "Number(\$config.serviceTimeMs) || 0)))" in rendered,
             "serviceTimeMs coercion missing",
         )
-        // Float field: coercion clamps without rounding
         assertTrue(
             "\$config.warmupSeconds = Math.min(30, Math.max(0, Number(\$config.warmupSeconds) || 0))" in
                 rendered,
             "warmupSeconds coercion missing",
         )
-        // Worker concurrency has non-zero min
         assertTrue(
             "\$config.workerConcurrency = Math.min(200, Math.max(1, Math.round(" +
                 "Number(\$config.workerConcurrency) || 0)))" in rendered,
@@ -267,70 +405,30 @@ class PageTest {
 
     @Test
     fun `permits value input can never coerce to zero`() {
-        // Regression: the server rejects permits = 0 for non-composite limiters,
-        // so the value input's coercion must clamp to the server-accepted range
-        // [1, 500] instead of [0, 500]. Blank or sub-1 entries round up to 1.
-        val step =
-            rendered
-                .substringAfter("id=\"step-permits\"")
-                .substringBefore("id=\"step-traffic\"")
+        // Regression: the server rejects permits = 0 for non-composite limiters.
         assertTrue(
             "\$config.permits = Math.min(500, Math.max(1, Math.round(Number(\$config.permits) || 0)))" in
-                step,
+                rendered,
             "permits coercion must clamp to >= 1",
         )
-        // The helper emits min=1 on the number input attribute as well.
         assertTrue(
-            "id=\"input-permits-value\" type=\"number\" min=\"1\"" in step,
+            "id=\"input-permits-value\" type=\"number\" min=\"1\"" in rendered,
             "permits value input should have min=1",
         )
     }
 
     @Test
-    fun `permits value input coercion absorbs sub-integer entry that would otherwise advance the wizard`() {
-        // Regression for the 0.4 -> step-3 -> blur -> 0 race. Step advance fires
-        // on data-on-input (raw signal), so typing 0.4 legitimately advances the
-        // wizard to step 3. The later data-on-change coercion must round to an
-        // integer AND clamp to >= 1 so the wizard is never left at a later step
-        // with a permits value the server rejects.
-        val step =
-            rendered
-                .substringAfter("id=\"step-permits\"")
-                .substringBefore("id=\"step-traffic\"")
-        // Step advance gate on data-on-input stays permissive.
-        assertTrue(
-            "data-on-input=\"\$config.permits &gt; 0 &amp;&amp; " +
-                "(\$ui.step = Math.max(\$ui.step, 3))\"" in step,
-            "permits value input should advance on input",
-        )
-        // Coercion wraps Math.round in Math.max(1, ...) so sub-1 rounds to 1.
-        assertTrue(
-            "Math.max(1, Math.round(Number(\$config.permits) || 0))" in step,
-            "permits coercion must floor at 1 after rounding",
-        )
-    }
-
-    @Test
     fun `failure rate input stores 0 to 1 while displaying percent`() {
-        val step =
-            rendered
-                .substringAfter("id=\"step-traffic\"")
-                .substringBefore("id=\"step-start\"")
-        // The percent input binds to the ui helper signal, not config.
-        assertTrue("data-bind=\"ui.failureRatePct\"" in step, "percent input should bind ui signal")
-        assertTrue("min=\"0\"" in step && "max=\"100\"" in step)
-        // Typing into the percent input syncs config.failureRate back to 0..1.
+        assertTrue("data-bind=\"ui.failureRatePct\"" in rendered, "percent input should bind ui signal")
         assertTrue(
             "\$config.failureRate = Math.min(1, Math.max(0, (Number(\$ui.failureRatePct) || 0) / 100))" in
-                step,
+                rendered,
             "percent -> config sync missing",
         )
-        // Dragging the range slider keeps the percent input up to date.
         assertTrue(
-            "\$ui.failureRatePct = Math.round(\$config.failureRate * 100)" in step,
+            "\$ui.failureRatePct = Math.round(\$config.failureRate * 100)" in rendered,
             "config -> percent sync missing",
         )
-        // The initial signals payload seeds the helper signal.
         assertTrue(
             "&quot;failureRatePct&quot;: 0" in rendered,
             "initial ui.failureRatePct missing from signals",

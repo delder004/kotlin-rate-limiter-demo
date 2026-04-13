@@ -91,13 +91,14 @@ fun FlowContent.renderLifecycleControlsSlot() {
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
             attributes["data-on-click"] =
-                "(\$ui.step = Math.max(\$ui.step, 5), @post('/simulations'))"
+                "(window.__cancelFollowUp && window.__cancelFollowUp(), @post('/simulations'))"
             attributes["data-attr-disabled"] = "\$sim.running"
             +"Start!"
         }
         button(type = ButtonType.button, classes = "stop-button") {
             id = "stop-button"
-            attributes["data-on-click"] = "@delete('/simulations/' + \$sim.id)"
+            attributes["data-on-click"] =
+                "(window.__cancelFollowUp && window.__cancelFollowUp(), @delete('/simulations/' + \$sim.id))"
             attributes["data-attr-disabled"] = "!\$sim.running"
             +"Stop"
         }
@@ -145,46 +146,121 @@ fun renderEmptyStatusLogFragment(): String =
         id = STATUS_LOG_ID
     }
 
+data class PresetFollowUp(
+    val delayMs: Int,
+    val requestsPerSecond: Int,
+)
+
 data class SimulationPreset(
     val id: String,
     val label: String,
+    val description: String,
     val updates: Map<String, String>,
+    val followUp: PresetFollowUp? = null,
 )
+
+// Fields the tweak panel exposes that every preset must reset to canonical
+// defaults, so a prior manual tweak (e.g. dropping workerConcurrency to 5)
+// doesn't silently break the next preset's scenario. Presets override any
+// baseline field they care about via their own `updates` map.
+val PresetBaseline: Map<String, String> =
+    mapOf(
+        "serviceTimeMs" to "50",
+        "jitterMs" to "20",
+        "failureRate" to "0.0",
+        "workerConcurrency" to "50",
+        "apiTarget" to "none",
+    )
 
 val DefaultPresets: List<SimulationPreset> =
     listOf(
         SimulationPreset(
-            id = "low",
-            label = "Low (1 rps)",
+            id = "under",
+            label = "Under the limit",
+            description = "10 req/s through a 20/s limiter — limiter stays out of the way.",
             updates =
                 mapOf(
-                    "requestsPerSecond" to "1",
-                    "limiterType" to "bursty",
-                    "permits" to "5",
-                    "perSeconds" to "1.0",
-                ),
-        ),
-        SimulationPreset(
-            id = "burst",
-            label = "Burst (100 rps)",
-            updates =
-                mapOf(
-                    "requestsPerSecond" to "100",
                     "limiterType" to "bursty",
                     "permits" to "20",
                     "perSeconds" to "1.0",
+                    "warmupSeconds" to "0",
+                    "requestsPerSecond" to "10",
+                    "overflowMode" to "queue",
                 ),
         ),
         SimulationPreset(
-            id = "smooth",
-            label = "Smooth ramp",
+            id = "deny",
+            label = "Exceed the limit · Deny",
+            description = "40 req/s into a 10/s limiter — watch the red denied gap open up.",
             updates =
                 mapOf(
-                    "requestsPerSecond" to "50",
-                    "limiterType" to "smooth",
+                    "limiterType" to "bursty",
                     "permits" to "10",
                     "perSeconds" to "1.0",
-                    "warmupSeconds" to "3",
+                    "warmupSeconds" to "0",
+                    "requestsPerSecond" to "40",
+                    "overflowMode" to "reject",
+                ),
+        ),
+        SimulationPreset(
+            id = "queue",
+            label = "Exceed the limit · Queue",
+            description = "Same overflow, buffered instead of dropped — latency climbs.",
+            updates =
+                mapOf(
+                    "limiterType" to "bursty",
+                    "permits" to "10",
+                    "perSeconds" to "1.0",
+                    "warmupSeconds" to "0",
+                    "requestsPerSecond" to "40",
+                    "overflowMode" to "queue",
+                ),
+        ),
+        SimulationPreset(
+            id = "burst-drain",
+            label = "Burst then drain",
+            description = "60 req/s spike for 5s, then drops to 5 req/s — limiter shaves the spike.",
+            updates =
+                mapOf(
+                    "limiterType" to "bursty",
+                    "permits" to "10",
+                    "perSeconds" to "1.0",
+                    "warmupSeconds" to "0",
+                    "requestsPerSecond" to "60",
+                    "overflowMode" to "reject",
+                ),
+            followUp = PresetFollowUp(delayMs = 5000, requestsPerSecond = 5),
+        ),
+        SimulationPreset(
+            id = "smooth",
+            label = "Smooth warmup",
+            description = "Smooth limiter ramps up over 5s before reaching 20/s.",
+            updates =
+                mapOf(
+                    "limiterType" to "smooth",
+                    "permits" to "20",
+                    "perSeconds" to "1.0",
+                    "warmupSeconds" to "5",
+                    "requestsPerSecond" to "20",
+                    "overflowMode" to "queue",
+                ),
+        ),
+        SimulationPreset(
+            id = "composite",
+            label = "Tiered limits",
+            description = "Two stacked limits: 20/s AND 50/10s. Long-run ceiling kicks in.",
+            updates =
+                mapOf(
+                    "limiterType" to "composite",
+                    "compositeCount" to "2",
+                    "child0Type" to "bursty",
+                    "child0Permits" to "20",
+                    "child0PerSeconds" to "1",
+                    "child1Type" to "bursty",
+                    "child1Permits" to "50",
+                    "child1PerSeconds" to "10",
+                    "requestsPerSecond" to "30",
+                    "overflowMode" to "reject",
                 ),
         ),
     )
@@ -197,14 +273,31 @@ fun FlowContent.renderPresetsPanel() {
             button(type = ButtonType.button, classes = "preset-button") {
                 id = "preset-${preset.id}"
                 attributes["data-preset"] = preset.id
+                // Merge baseline first so preset.updates overrides any field
+                // it cares about. Ordering matters: baseline assignments run
+                // first in the emitted expression, so the preset's own values
+                // land last and win for shared keys.
+                val mergedUpdates = PresetBaseline + preset.updates
                 val signalUpdates =
-                    preset.updates.entries.joinToString(", ") { (k, v) ->
+                    mergedUpdates.entries.joinToString(", ") { (k, v) ->
                         val literal = if (v.toDoubleOrNull() != null) v else "'$v'"
                         "\$config.$k = $literal"
                     }
+                val followUpCall =
+                    preset.followUp?.let { fu ->
+                        ", window.__scheduleFollowUp(${fu.delayMs}, ${fu.requestsPerSecond})"
+                    } ?: ""
+                // Every preset click cancels any pending burst-drain drop
+                // from a prior click, so switching presets mid-scenario
+                // doesn't get clobbered by the old timeout firing.
                 attributes["data-on-click"] =
-                    "($signalUpdates, \$sim.running && @patch('/simulations/' + \$sim.id))"
-                +preset.label
+                    "(window.__cancelFollowUp && window.__cancelFollowUp(), " +
+                    "$signalUpdates, " +
+                    "!\$sim.running && @post('/simulations'), " +
+                    "\$sim.running && @patch('/simulations/' + \$sim.id)" +
+                    "$followUpCall)"
+                div("preset-label") { +preset.label }
+                div("preset-description") { +preset.description }
             }
         }
     }
@@ -221,12 +314,24 @@ fun FlowContent.renderChartMount() {
             id = CHART_CANVAS_ID
         }
         span("chart-effect") {
+            // permitsPerSec routes through __effectivePermitsPerSec so the
+            // composite case returns the slowest child's steady-state rate
+            // (the bottleneck tier) rather than a stale top-level value.
             attributes["data-text"] =
                 "(window.__chartPush ? (window.__chartPush({" +
                 "running: \$sim.running, " +
                 "completed: \$stats.completed, " +
                 "acceptRate: \$stats.acceptRate, " +
-                "permitsPerSec: \$config.permits / (\$config.perSeconds || 1), " +
+                "rejectRate: \$stats.rejectRate, " +
+                "permitsPerSec: (window.__effectivePermitsPerSec ? " +
+                "window.__effectivePermitsPerSec(" +
+                "\$config.limiterType, \$config.permits, \$config.perSeconds, \$config.compositeCount, " +
+                "\$config.child0Permits, \$config.child0PerSeconds, " +
+                "\$config.child1Permits, \$config.child1PerSeconds, " +
+                "\$config.child2Permits, \$config.child2PerSeconds, " +
+                "\$config.child3Permits, \$config.child3PerSeconds, " +
+                "\$config.child4Permits, \$config.child4PerSeconds" +
+                ") : (\$config.permits / (\$config.perSeconds || 1))), " +
                 "incomingPerSec: \$config.requestsPerSecond" +
                 "}), '') : '')"
         }
@@ -247,13 +352,14 @@ fun renderLifecycleControlsFragment(handle: SimulationHandle?): String {
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
             attributes["data-on-click"] =
-                "(\$ui.step = Math.max(\$ui.step, 5), @post('/simulations'))"
+                "(window.__cancelFollowUp && window.__cancelFollowUp(), @post('/simulations'))"
             if (running) attributes["disabled"] = "disabled"
             +"Start!"
         }
         button(type = ButtonType.button, classes = "stop-button") {
             id = "stop-button"
-            attributes["data-on-click"] = "@delete('/simulations/' + \$sim.id)"
+            attributes["data-on-click"] =
+                "(window.__cancelFollowUp && window.__cancelFollowUp(), @delete('/simulations/' + \$sim.id))"
             if (!running) attributes["disabled"] = "disabled"
             +"Stop"
         }
