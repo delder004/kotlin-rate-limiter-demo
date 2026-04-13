@@ -91,10 +91,7 @@ fun FlowContent.renderLifecycleControlsSlot() {
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
             attributes["data-on-click"] =
-                "(\$ui.step = Math.max(\$ui.step, 5), " +
-                "\$sim.id " +
-                "? @post('/simulations/' + \$sim.id + '/resume') " +
-                ": @post('/simulations'))"
+                "(\$ui.step = Math.max(\$ui.step, 5), @post('/simulations'))"
             attributes["data-attr-disabled"] = "\$sim.running"
             +"Start!"
         }
@@ -250,10 +247,7 @@ fun renderLifecycleControlsFragment(handle: SimulationHandle?): String {
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
             attributes["data-on-click"] =
-                "(\$ui.step = Math.max(\$ui.step, 5), " +
-                "\$sim.id " +
-                "? @post('/simulations/' + \$sim.id + '/resume') " +
-                ": @post('/simulations'))"
+                "(\$ui.step = Math.max(\$ui.step, 5), @post('/simulations'))"
             if (running) attributes["disabled"] = "disabled"
             +"Start!"
         }

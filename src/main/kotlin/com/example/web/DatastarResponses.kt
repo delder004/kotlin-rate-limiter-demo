@@ -116,10 +116,10 @@ fun buildSimLifecycleJson(
 }
 
 object StreamEventMapper {
-    fun initialStateEvents(handle: SimulationHandle): List<DatastarEvent> =
+    fun initialStateEvents(snapshot: SimulationHandle.AttachedSnapshot): List<DatastarEvent> =
         listOf(
-            DatastarEvent.MergeSignals(buildSimLifecycleJson(handle.id, handle.status.wire, handle.isRunning)),
-            DatastarEvent.MergeSignals(buildStatsSignalsJson(handle.currentMetrics)),
+            DatastarEvent.MergeSignals(buildSimLifecycleJson(snapshot.simId, snapshot.statusWire, snapshot.running)),
+            DatastarEvent.MergeSignals(buildStatsSignalsJson(snapshot.metrics)),
         )
 
     fun toDatastarEvents(event: SimulationEvent): List<DatastarEvent> =

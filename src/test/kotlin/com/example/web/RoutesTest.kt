@@ -13,6 +13,7 @@ import io.ktor.http.*
 import io.ktor.server.testing.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -125,12 +126,69 @@ class RoutesTest {
             assertEquals(HttpStatusCode.OK, response.status)
             val body = response.bodyAsText()
             assertTrue("\"running\":false" in body)
-            assertTrue("\"status\":\"stopped\"" in body)
-            assertTrue("\"${handle.id}\"" in body, "stopped response should retain sim.id for resume")
+            assertTrue("\"status\":\"idle\"" in body, "client sim state resets to idle so the next Start creates a fresh sim")
+            assertTrue("\"id\":null" in body, "stopped response should clear sim.id")
 
-            val stored = registry.get(handle.id)
-            assertNotNull(stored)
-            assertEquals(SimulationStatus.STOPPED, stored.status)
+            assertNull(registry.get(handle.id), "stopped handles should be evicted from the registry")
+            assertTrue(registry.list().isEmpty())
+        }
+
+    @Test
+    fun `stop then start creates a fresh handle with updated config`() =
+        testApplication {
+            val registry = SimulationRegistry()
+            application { module(registry) }
+
+            val first =
+                client.submitForm(
+                    url = "/simulations",
+                    formParameters =
+                        parameters {
+                            append("limiterType", "bursty")
+                            append("permits", "5")
+                            append("perSeconds", "1.0")
+                            append("warmupSeconds", "0")
+                            append("requestsPerSecond", "5.0")
+                            append("overflowMode", "queue")
+                            append("apiTarget", "none")
+                            append("serviceTimeMs", "50")
+                            append("jitterMs", "20")
+                            append("failureRate", "0.0")
+                            append("workerConcurrency", "50")
+                        },
+                )
+            assertEquals(HttpStatusCode.OK, first.status)
+            val firstHandle = registry.list().single()
+
+            val stopResponse = client.delete("/simulations/${firstHandle.id}")
+            assertEquals(HttpStatusCode.OK, stopResponse.status)
+            assertTrue(registry.list().isEmpty())
+
+            val second =
+                client.submitForm(
+                    url = "/simulations",
+                    formParameters =
+                        parameters {
+                            append("limiterType", "smooth")
+                            append("permits", "42")
+                            append("perSeconds", "1.0")
+                            append("warmupSeconds", "0")
+                            append("requestsPerSecond", "10.0")
+                            append("overflowMode", "reject")
+                            append("apiTarget", "none")
+                            append("serviceTimeMs", "50")
+                            append("jitterMs", "20")
+                            append("failureRate", "0.0")
+                            append("workerConcurrency", "50")
+                        },
+                )
+            assertEquals(HttpStatusCode.OK, second.status)
+
+            val secondHandle = registry.list().single()
+            assertNotEquals(firstHandle.id, secondHandle.id, "restart must create a distinct handle")
+            assertEquals(LimiterType.SMOOTH, secondHandle.config.limiterType)
+            assertEquals(42, secondHandle.config.permits)
+            assertEquals(OverflowMode.REJECT, secondHandle.config.overflowMode)
         }
 
     @Test

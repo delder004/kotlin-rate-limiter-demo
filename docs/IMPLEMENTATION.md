@@ -25,7 +25,7 @@ This document now reflects the implementation that actually exists:
 Working now:
 
 - Datastar page shell with a step-based wizard
-- plain HTTP start, update, stop, and resume actions
+- plain HTTP start, update, and stop actions (Stop evicts the simulation; the next Start always creates a fresh one)
 - SSE metrics and log streaming
 - transport-agnostic simulation engine and registry
 - chart island and automated coverage
@@ -515,7 +515,6 @@ These are the routes currently expected in the shipped app:
 - `POST /simulations`
 - `PATCH /simulations/:id`
 - `DELETE /simulations/:id`
-- `POST /simulations/:id/resume`
 - `GET /simulations/:id/stream`
 
 Optional later:
@@ -626,7 +625,7 @@ If implementing sequentially, use this exact order:
 - remove legacy WebSocket and demo-only code so the repo has one clear transport story
 - add a README with run instructions and architecture notes
 - add basic CI for `./gradlew test`
-- keep the docs aligned with the shipped wizard and resume route
+- keep the docs aligned with the shipped wizard
 
 ### Potential, Not Planned
 

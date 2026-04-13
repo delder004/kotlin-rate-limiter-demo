@@ -34,6 +34,11 @@ class SimulationRegistry(
     ): UpdateResult {
         val handle = handles[id] ?: return UpdateResult.NotFound
         synchronized(handle) {
+            // Guard the race between update and stop: update may have captured
+            // this handle reference before stop's handles.remove() and only now
+            // reached the synchronized block. If stop won the lock first, the
+            // handle is no longer live and we must not mutate it or echo a
+            // stale lifecycle patch back to the client.
             if (handle.status != SimulationStatus.RUNNING) {
                 return UpdateResult.NotRunning
             }
@@ -95,22 +100,8 @@ class SimulationRegistry(
         return changes.joinToString(", ")
     }
 
-    fun resume(id: String): ResumeResult {
-        val handle = handles[id] ?: return ResumeResult.NotFound
-        synchronized(handle) {
-            if (handle.status == SimulationStatus.RUNNING) {
-                return ResumeResult.AlreadyRunning(handle)
-            }
-            handle.status = SimulationStatus.RUNNING
-            handle.stoppedAt = null
-            handle.updatedAt = Instant.now(clock)
-            engine.start(handle)
-        }
-        return ResumeResult.Resumed(handle)
-    }
-
     fun stop(id: String): SimulationHandle? {
-        val handle = handles[id] ?: return null
+        val handle = handles.remove(id) ?: return null
         synchronized(handle) {
             if (handle.status != SimulationStatus.STOPPED) {
                 handle.status = SimulationStatus.STOPPED
@@ -129,14 +120,6 @@ class SimulationRegistry(
         object NotFound : UpdateResult()
 
         object NotRunning : UpdateResult()
-    }
-
-    sealed class ResumeResult {
-        data class Resumed(val handle: SimulationHandle) : ResumeResult()
-
-        data class AlreadyRunning(val handle: SimulationHandle) : ResumeResult()
-
-        object NotFound : ResumeResult()
     }
 
     private class DefaultIdGenerator : () -> String {

@@ -10,6 +10,7 @@ import com.example.simulation.SimulationConfig
 import com.example.simulation.SimulationEvent
 import com.example.simulation.SimulationHandle
 import com.example.simulation.SimulationRegistry
+import com.example.simulation.SimulationStatus
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -86,7 +87,7 @@ class SseStreamTest {
         }
 
     @Test
-    fun `stream emits initial state for stopped simulation and closes cleanly`() =
+    fun `stream returns 404 for a simulation that was stopped and evicted`() =
         testApplication {
             val registry = SimulationRegistry()
             application { module(registry) }
@@ -94,18 +95,40 @@ class SseStreamTest {
             registry.stop(handle.id)
 
             val response = client.get("/simulations/${handle.id}/stream")
-            assertEquals(HttpStatusCode.OK, response.status)
-            assertEquals(
-                "text/event-stream",
-                response.contentType()?.withoutParameters()?.toString(),
-            )
-            val body = response.bodyAsText()
-            assertTrue("datastar-merge-signals" in body, "expected merge-signals event in:\n$body")
-            assertTrue("\"id\":\"${handle.id}\"" in body)
-            assertTrue("\"status\":\"stopped\"" in body)
-            assertTrue("\"running\":false" in body)
-            assertTrue("\"stats\":" in body)
-            assertEquals(0, handle.subscriberCount, "subscriber detached after close")
+            assertEquals(HttpStatusCode.NotFound, response.status)
+        }
+
+    @Test
+    fun `stream does not hang if stop wins the race between lookup and subscriber attach`() =
+        testApplication {
+            // Reproduces the GET-stop-attach interleaving: the handler has
+            // already fetched the handle from the registry, but stop's
+            // synchronized block runs before the handler attaches. Without
+            // attachSubscriberIfRunning, the handler would add a fresh
+            // subscriber after closeAllSubscribers already drained and block
+            // forever waiting for events on a channel nobody will close.
+            //
+            // We model the race without real threads by leaving the handle in
+            // the registry (so get() returns it) but flipping its status to
+            // STOPPED (so the second check inside the handler fires).
+            val registry = SimulationRegistry()
+            application { module(registry) }
+            val handle = registry.create(validConfig())
+            handle.status = SimulationStatus.STOPPED
+
+            val scope = CoroutineScope(coroutineContext)
+            val streamDeferred =
+                scope.async {
+                    client.get("/simulations/${handle.id}/stream").bodyAsText()
+                }
+
+            withTimeoutOrNull(5_000) { streamDeferred.await() }
+                ?: run {
+                    streamDeferred.cancel()
+                    error("stream handler hung on a stopped handle")
+                }
+
+            assertEquals(0, handle.subscriberCount, "no subscriber should have been attached")
         }
 
     @Test
@@ -220,8 +243,8 @@ class SseStreamTest {
             val body = streamDeferred.await()
 
             assertTrue("\"id\":\"${handle.id}\"" in body, "id preserved")
-            // Subscriber stayed attached through the update (no re-attach required)
-            assertEquals(handle.id, registry.get(handle.id)?.id)
+            // Subscriber stayed attached through the update (no re-attach required);
+            // registry eviction happens on stop, so we only assert the stream body.
         }
 
     @Test

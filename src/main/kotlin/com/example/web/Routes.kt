@@ -67,17 +67,13 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
             contentType = ContentType.parse("text/event-stream"),
             status = HttpStatusCode.OK,
         ) {
-            val subscriber = handle.attachSubscriber()
+            val attached = handle.attachSubscriberIfRunning() ?: return@respondBytesWriter
+            val subscriber = attached.subscriber
             try {
-                for (event in StreamEventMapper.initialStateEvents(handle)) {
+                for (event in StreamEventMapper.initialStateEvents(attached)) {
                     writeStringUtf8(event.render())
                 }
                 flush()
-
-                // If the handle is already stopped, deliver the final state and exit.
-                if (!handle.isRunning) {
-                    return@respondBytesWriter
-                }
 
                 for (event in subscriber.events) {
                     for (dsEvent in StreamEventMapper.toDatastarEvents(event)) {
@@ -143,45 +139,13 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
             call.respond(HttpStatusCode.NotFound, "simulation $id not found")
             return@delete
         }
-        // Keep sim.id so a subsequent Start click can resume this handle
-        // instead of creating a brand new simulation.
         call.respondDatastar(
             DatastarResponse()
-                .patchSimLifecycle(stopped.id, "stopped", running = false)
-                .patchLifecycleControls(stopped)
+                .patchSimLifecycle(id = null, status = "idle", running = false)
+                .patchLifecycleControls(null)
                 .patchStreamAnchor(null)
                 .prependStatusLogEntry("Stopped"),
         )
-    }
-
-    post("/simulations/{id}/resume") {
-        val id = call.parameters["id"]
-        if (id.isNullOrBlank()) {
-            call.respond(HttpStatusCode.BadRequest, "missing id")
-            return@post
-        }
-        when (val result = registry.resume(id)) {
-            SimulationRegistry.ResumeResult.NotFound ->
-                call.respond(HttpStatusCode.NotFound, "simulation $id not found")
-            is SimulationRegistry.ResumeResult.AlreadyRunning -> {
-                val handle = result.handle
-                call.respondDatastar(
-                    DatastarResponse()
-                        .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning),
-                )
-            }
-            is SimulationRegistry.ResumeResult.Resumed -> {
-                val handle = result.handle
-                call.respondDatastar(
-                    DatastarResponse()
-                        .clearFormErrors()
-                        .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning)
-                        .patchLifecycleControls(handle)
-                        .patchStreamAnchor(handle)
-                        .prependStatusLogEntry("Resumed"),
-                )
-            }
-        }
     }
 }
 

@@ -59,7 +59,7 @@ At the end of milestone 7:
 - the page guides the user through limiter choice, capacity shaping, traffic rate, and start
 - only limiter-relevant controls are shown for smooth and composite flows
 - run panels stay visible after start
-- the live dashboard keeps the existing start, update, stream, stop, and resume behavior
+- the live dashboard keeps the existing start, update, stream, and stop behavior (resume was later removed — see note below)
 - scenarios and presets are deferred instead of being forced into the wizard prematurely
 - advanced traffic controls remain in the config and validation model but are not exposed in the page
 
@@ -67,7 +67,7 @@ At the end of milestone 7:
 ## Design Constraints
 
 - keep the current flat `config.*` signal structure for this pass
-- keep the current `POST`, `PATCH`, `DELETE`, `POST /simulations/:id/resume`, and SSE route contracts
+- keep the current `POST`, `PATCH`, `DELETE`, and SSE route contracts (the `POST /simulations/:id/resume` route shipped in this milestone was removed in a follow-up; Stop now evicts the handle and Start always creates a fresh simulation)
 - do not force validation or backend parsing changes unless the UI contract truly requires them
 - preserve the current live-update semantics for the visible controls
 - prioritize a clear first-run path over maximum control density

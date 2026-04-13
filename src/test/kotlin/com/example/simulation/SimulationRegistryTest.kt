@@ -70,24 +70,22 @@ class SimulationRegistryTest {
     }
 
     @Test
-    fun `stop transitions handle to stopped state`() {
+    fun `stop transitions handle to stopped state and evicts it from the registry`() {
         val registry = newRegistry()
         val created = registry.create(sampleConfig())
         val stopped = registry.stop(created.id)
         assertNotNull(stopped)
         assertEquals(SimulationStatus.STOPPED, stopped.status)
         assertNotNull(stopped.stoppedAt)
-        assertEquals(stopped, registry.get(created.id))
+        assertNull(registry.get(created.id), "stopped handles must not linger in the registry")
     }
 
     @Test
-    fun `stop is idempotent and preserves stoppedAt`() {
+    fun `second stop of same id returns null after eviction`() {
         val registry = newRegistry()
         val created = registry.create(sampleConfig())
-        val firstStop = registry.stop(created.id)!!
-        val secondStop = registry.stop(created.id)!!
-        assertEquals(SimulationStatus.STOPPED, secondStop.status)
-        assertEquals(firstStop.stoppedAt, secondStop.stoppedAt)
+        assertNotNull(registry.stop(created.id))
+        assertNull(registry.stop(created.id))
     }
 
     @Test
@@ -147,10 +145,27 @@ class SimulationRegistryTest {
     }
 
     @Test
-    fun `update on stopped handle returns NotRunning`() {
+    fun `update after stop evicts handle and returns NotFound`() {
         val registry = newRegistry()
         val created = registry.create(sampleConfig())
         registry.stop(created.id)
+        assertEquals(
+            SimulationRegistry.UpdateResult.NotFound,
+            registry.update(created.id, sampleConfig()),
+        )
+    }
+
+    @Test
+    fun `update refuses a handle whose status flipped to STOPPED mid-call`() {
+        // Reproduces the PATCH/DELETE race: an update() that captured a handle
+        // reference before stop() removed it from the map must not mutate the
+        // handle or emit an Updated result. Simulate that window by leaving the
+        // handle in the registry (as if remove hadn't happened yet on the other
+        // thread) but flipping its status to STOPPED (as if stop's synchronized
+        // block already ran).
+        val registry = newRegistry()
+        val created = registry.create(sampleConfig())
+        created.status = SimulationStatus.STOPPED
         assertEquals(
             SimulationRegistry.UpdateResult.NotRunning,
             registry.update(created.id, sampleConfig()),

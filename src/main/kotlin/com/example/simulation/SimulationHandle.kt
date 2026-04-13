@@ -68,6 +68,39 @@ class SimulationHandle internal constructor(
         return sub
     }
 
+    // Serializes with SimulationRegistry.stop() via the handle's monitor.
+    // Either we observe RUNNING and our subscriber joins the set before stop's
+    // synchronized block snapshots subscribers for closeAllSubscribers (so stop
+    // will close us and the stream loop exits cleanly), or stop already ran and
+    // we see a non-RUNNING status and refuse to attach. Prevents a late attach
+    // after closeAllSubscribers has already drained, which would otherwise
+    // leave the SSE handler blocked on a channel nobody will ever close.
+    //
+    // The returned snapshot captures id/status/metrics under the same lock so
+    // the SSE handler can emit an initial state that is coherent with the
+    // moment of attachment — without the capture, a stop() that lands between
+    // attach and the handler's read of handle.status could surface a "stopped"
+    // initial snapshot for a client that connected to a running sim.
+    fun attachSubscriberIfRunning(capacity: Int = SimulationSubscriber.DEFAULT_CAPACITY): AttachedSnapshot? =
+        synchronized(this) {
+            if (status != SimulationStatus.RUNNING) return@synchronized null
+            AttachedSnapshot(
+                subscriber = attachSubscriber(capacity),
+                simId = id,
+                statusWire = status.wire,
+                running = isRunning,
+                metrics = currentMetrics,
+            )
+        }
+
+    data class AttachedSnapshot(
+        val subscriber: SimulationSubscriber,
+        val simId: String,
+        val statusWire: String,
+        val running: Boolean,
+        val metrics: MetricsSnapshot,
+    )
+
     fun detachSubscriber(subscriber: SimulationSubscriber) {
         if (subscribers.remove(subscriber)) {
             subscriber.close()

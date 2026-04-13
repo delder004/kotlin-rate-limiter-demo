@@ -54,15 +54,11 @@ class CoroutineSimulationEngine(
             val limiter = LiveEngineLimiter(handle.limiterRef)
             val startMs = timeSource()
 
-            // Seed cumulative counters from the last snapshot so resume picks up
-            // where stop left off. Queued/in-flight reset because the request
-            // channel and workers were destroyed when the engine job was cancelled.
-            val prev = handle.currentMetrics
             val queued = AtomicInteger(0)
-            val admitted = AtomicLong(prev.admitted)
-            val completed = AtomicLong(prev.completed)
-            val denied = AtomicLong(prev.denied)
-            val droppedIncoming = AtomicLong(prev.droppedIncoming)
+            val admitted = AtomicLong(0)
+            val completed = AtomicLong(0)
+            val denied = AtomicLong(0)
+            val droppedIncoming = AtomicLong(0)
             val inFlight = AtomicInteger(0)
             val latencies = ConcurrentLinkedQueue<Long>()
 
