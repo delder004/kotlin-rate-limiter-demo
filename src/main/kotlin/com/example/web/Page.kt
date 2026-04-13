@@ -1189,10 +1189,6 @@ fun HTML.renderPageShell() {
                     id = "status-panel"
                     div("running-bar") {
                         renderStatusBadgeSlot()
-                        span {
-                            attributes["data-text"] = "'id: ' + (\$sim.id || '—')"
-                            +"id: —"
-                        }
                         renderLifecycleControlsSlot()
                     }
                 }
