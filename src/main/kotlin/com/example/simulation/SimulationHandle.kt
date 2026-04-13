@@ -92,7 +92,10 @@ class SimulationHandle internal constructor(
         metricsRef.set(snapshot)
     }
 
-    internal fun applyUpdate(newConfig: SimulationConfig, at: Instant) {
+    internal fun applyUpdate(
+        newConfig: SimulationConfig,
+        at: Instant,
+    ) {
         config = newConfig
         updatedAt = at
     }
@@ -101,8 +104,7 @@ class SimulationHandle internal constructor(
         logs.add(entry)
     }
 
-    override fun toString(): String =
-        "SimulationHandle(id=$id, status=$status, createdAt=$createdAt, stoppedAt=$stoppedAt)"
+    override fun toString(): String = "SimulationHandle(id=$id, status=$status, createdAt=$createdAt, stoppedAt=$stoppedAt)"
 
     companion object {
         const val DEFAULT_LOG_CAPACITY = 200

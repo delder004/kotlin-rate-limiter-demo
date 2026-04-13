@@ -41,7 +41,10 @@ class ValidationTest {
         return result.config
     }
 
-    private fun assertInvalidOnField(raw: RawSimulationConfig, field: String) {
+    private fun assertInvalidOnField(
+        raw: RawSimulationConfig,
+        field: String,
+    ) {
         val result = Validator.validate(raw)
         assertIs<ValidationResult.Invalid>(result, "expected invalid for $field")
         assertTrue(
@@ -68,15 +71,17 @@ class ValidationTest {
 
     @Test
     fun `valid composite config`() {
-        val config = assertValid(
-            baseRaw(
-                limiterType = "composite",
-                compositeChildren = listOf(
-                    RawCompositeChild(limiterType = "bursty", permits = "10", perSeconds = "1.0", warmupSeconds = "0"),
-                    RawCompositeChild(limiterType = "smooth", permits = "1000", perSeconds = "3600.0", warmupSeconds = "2"),
+        val config =
+            assertValid(
+                baseRaw(
+                    limiterType = "composite",
+                    compositeChildren =
+                        listOf(
+                            RawCompositeChild(limiterType = "bursty", permits = "10", perSeconds = "1.0", warmupSeconds = "0"),
+                            RawCompositeChild(limiterType = "smooth", permits = "1000", perSeconds = "3600.0", warmupSeconds = "2"),
+                        ),
                 ),
-            ),
-        )
+            )
         assertEquals(LimiterType.COMPOSITE, config.limiterType)
         assertEquals(2, config.compositeChildren.size)
         assertEquals(LimiterType.BURSTY, config.compositeChildren[0].limiterType)
@@ -151,9 +156,10 @@ class ValidationTest {
         assertInvalidOnField(
             baseRaw(
                 limiterType = "composite",
-                compositeChildren = listOf(
-                    RawCompositeChild(limiterType = "bursty", permits = null, perSeconds = "10"),
-                ),
+                compositeChildren =
+                    listOf(
+                        RawCompositeChild(limiterType = "bursty", permits = null, perSeconds = "10"),
+                    ),
             ),
             "child0Permits",
         )
@@ -164,9 +170,10 @@ class ValidationTest {
         assertInvalidOnField(
             baseRaw(
                 limiterType = "composite",
-                compositeChildren = listOf(
-                    RawCompositeChild(limiterType = "bursty", permits = "5", perSeconds = null),
-                ),
+                compositeChildren =
+                    listOf(
+                        RawCompositeChild(limiterType = "bursty", permits = "5", perSeconds = null),
+                    ),
             ),
             "child0PerSeconds",
         )
@@ -177,9 +184,10 @@ class ValidationTest {
         assertInvalidOnField(
             baseRaw(
                 limiterType = "composite",
-                compositeChildren = listOf(
-                    RawCompositeChild(limiterType = "bursty", permits = "0", perSeconds = "10"),
-                ),
+                compositeChildren =
+                    listOf(
+                        RawCompositeChild(limiterType = "bursty", permits = "0", perSeconds = "10"),
+                    ),
             ),
             "child0Permits",
         )

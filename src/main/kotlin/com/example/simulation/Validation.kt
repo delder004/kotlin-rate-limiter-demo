@@ -4,6 +4,7 @@ data class FieldError(val field: String, val message: String)
 
 sealed class ValidationResult {
     data class Valid(val config: SimulationConfig) : ValidationResult()
+
     data class Invalid(
         val fieldErrors: List<FieldError>,
         val globalErrors: List<String> = emptyList(),
@@ -79,9 +80,10 @@ object Validator {
 
         val compositeChildren = mutableListOf<CompositeChild>()
         if (limiterType == LimiterType.COMPOSITE) {
-            val count = raw.compositeCount?.toIntOrNull()
-                ?.coerceIn(1, MAX_COMPOSITE_CHILDREN)
-                ?: raw.compositeChildren.size.coerceAtLeast(1)
+            val count =
+                raw.compositeCount?.toIntOrNull()
+                    ?.coerceIn(1, MAX_COMPOSITE_CHILDREN)
+                    ?: raw.compositeChildren.size.coerceAtLeast(1)
             if (raw.compositeChildren.size < count) {
                 errors += FieldError("compositeChildren", "missing child definitions")
             }
@@ -96,18 +98,20 @@ object Validator {
                     requireInt(child.permits, "child${index}Permits", errors) { it > 0 }
                 val childPerSeconds =
                     requireDouble(child.perSeconds, "child${index}PerSeconds", errors) { it > 0.0 }
-                val childWarmup = if (childType == LimiterType.SMOOTH) {
-                    requireDouble(child.warmupSeconds, "child${index}WarmupSeconds", errors) { it >= 0.0 }
-                } else {
-                    0.0
-                }
+                val childWarmup =
+                    if (childType == LimiterType.SMOOTH) {
+                        requireDouble(child.warmupSeconds, "child${index}WarmupSeconds", errors) { it >= 0.0 }
+                    } else {
+                        0.0
+                    }
                 if (childPermits != null && childPerSeconds != null && childWarmup != null) {
-                    compositeChildren += CompositeChild(
-                        limiterType = childType,
-                        permits = childPermits,
-                        perSeconds = childPerSeconds,
-                        warmupSeconds = childWarmup,
-                    )
+                    compositeChildren +=
+                        CompositeChild(
+                            limiterType = childType,
+                            permits = childPermits,
+                            perSeconds = childPerSeconds,
+                            warmupSeconds = childWarmup,
+                        )
                 }
             }
             if (errors.none { it.field.startsWith("child") } && compositeChildren.isEmpty()) {

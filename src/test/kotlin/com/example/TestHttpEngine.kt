@@ -27,8 +27,9 @@ fun createTestClient(
             addHandler { request ->
                 if (serviceDelayMs > 0) delay(serviceDelayMs)
                 requestCount++
-                val shouldFail = failureRate > 0.0 &&
-                    (requestCount * failureRate).toInt() >
+                val shouldFail =
+                    failureRate > 0.0 &&
+                        (requestCount * failureRate).toInt() >
                         ((requestCount - 1) * failureRate).toInt()
                 if (shouldFail) {
                     respond(
@@ -55,10 +56,11 @@ private fun MockRequestHandleScope.respondToUrl(url: Url): HttpResponseData {
         path.contains("/facts") -> {
             val page = url.parameters["page"]?.toIntOrNull() ?: 1
             val limit = url.parameters["limit"]?.toIntOrNull() ?: 3
-            val facts = (1..limit).joinToString(",") { i ->
-                val idx = (page - 1) * limit + i
-                """{"fact":"Test fact $idx about cats","length":${20 + i}}"""
-            }
+            val facts =
+                (1..limit).joinToString(",") { i ->
+                    val idx = (page - 1) * limit + i
+                    """{"fact":"Test fact $idx about cats","length":${20 + i}}"""
+                }
             respond(
                 """{"data":[$facts],"current_page":$page,"last_page":10}""",
                 HttpStatusCode.OK,

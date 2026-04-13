@@ -14,10 +14,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -189,7 +185,11 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
     }
 }
 
-private val lenientJson = Json { ignoreUnknownKeys = true; isLenient = true }
+private val lenientJson =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
 
 private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
     val contentType = request.contentType()
@@ -197,14 +197,15 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
         contentType.match(ContentType.Application.FormUrlEncoded) -> {
             val params = receiveParameters()
             val count = params["compositeCount"]?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
-            val children = (0 until count).map { i ->
-                RawCompositeChild(
-                    limiterType = params["child${i}Type"],
-                    permits = params["child${i}Permits"],
-                    perSeconds = params["child${i}PerSeconds"],
-                    warmupSeconds = params["child${i}WarmupSeconds"],
-                )
-            }
+            val children =
+                (0 until count).map { i ->
+                    RawCompositeChild(
+                        limiterType = params["child${i}Type"],
+                        permits = params["child${i}Permits"],
+                        perSeconds = params["child${i}PerSeconds"],
+                        warmupSeconds = params["child${i}WarmupSeconds"],
+                    )
+                }
             RawSimulationConfig(
                 limiterType = params["limiterType"],
                 permits = params["permits"],
@@ -224,19 +225,22 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
         contentType.match(ContentType.Application.Json) -> {
             val body = receiveText()
             val root = runCatching { lenientJson.parseToJsonElement(body) }.getOrNull()
-            val config = (root as? JsonObject)?.get("config") as? JsonObject
-                ?: (root as? JsonObject)
-                ?: JsonObject(emptyMap())
+            val config =
+                (root as? JsonObject)?.get("config") as? JsonObject
+                    ?: (root as? JsonObject)
+                    ?: JsonObject(emptyMap())
+
             fun field(name: String): String? = config[name]?.asScalarString()
             val count = field("compositeCount")?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
-            val children = (0 until count).map { i ->
-                RawCompositeChild(
-                    limiterType = field("child${i}Type"),
-                    permits = field("child${i}Permits"),
-                    perSeconds = field("child${i}PerSeconds"),
-                    warmupSeconds = field("child${i}WarmupSeconds"),
-                )
-            }
+            val children =
+                (0 until count).map { i ->
+                    RawCompositeChild(
+                        limiterType = field("child${i}Type"),
+                        permits = field("child${i}Permits"),
+                        perSeconds = field("child${i}PerSeconds"),
+                        warmupSeconds = field("child${i}WarmupSeconds"),
+                    )
+                }
             RawSimulationConfig(
                 limiterType = field("limiterType"),
                 permits = field("permits"),
@@ -256,14 +260,15 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
         else -> {
             val q = request.queryParameters
             val count = q["compositeCount"]?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
-            val children = (0 until count).map { i ->
-                RawCompositeChild(
-                    limiterType = q["child${i}Type"],
-                    permits = q["child${i}Permits"],
-                    perSeconds = q["child${i}PerSeconds"],
-                    warmupSeconds = q["child${i}WarmupSeconds"],
-                )
-            }
+            val children =
+                (0 until count).map { i ->
+                    RawCompositeChild(
+                        limiterType = q["child${i}Type"],
+                        permits = q["child${i}Permits"],
+                        perSeconds = q["child${i}PerSeconds"],
+                        warmupSeconds = q["child${i}WarmupSeconds"],
+                    )
+                }
             RawSimulationConfig(
                 limiterType = q["limiterType"],
                 permits = q["permits"],

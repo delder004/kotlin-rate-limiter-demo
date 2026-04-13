@@ -7,6 +7,37 @@ This document turns [DESIGN.md](/Users/delos/repos/test-rate-limiter/DESIGN.md) 
 The target is a Datastar-first, SSE-based dashboard built from scratch, not a migration of the current WebSocket demo.
 
 
+## Revision Note
+
+The implementation diverged from the earlier UI plan in one important way:
+the page shipped as a step-based wizard with persistent run panels, not as distinct `Limiter` and `Traffic` sections.
+
+This document now reflects the implementation that actually exists:
+
+- the Datastar and SSE architecture shipped
+- the primary page flow is wizard-based
+- scenarios and presets are deferred, not part of the current page contract
+- advanced traffic fields remain in the config model, but are not currently exposed in the UI
+
+
+## Current State Snapshot
+
+Working now:
+
+- Datastar page shell with a step-based wizard
+- plain HTTP start, update, stop, and resume actions
+- SSE metrics and log streaming
+- transport-agnostic simulation engine and registry
+- chart island and automated coverage
+
+Still deferred or unfinished:
+
+- scenario and preset buttons are not mounted in the page
+- advanced traffic controls are not exposed in the wizard
+- legacy WebSocket and demo files are still present in the repo
+- README and CI basics are still missing
+
+
 ## Delivery Strategy
 
 Build the app in thin vertical slices:
@@ -163,7 +194,7 @@ Define the simulation config and reject bad input before any engine work exists.
 - Add validation rules for:
   - permits
   - primary period
-  - secondary period
+  - composite child periods
   - warmup
   - request rate
   - service time
@@ -183,7 +214,7 @@ Define the simulation config and reject bad input before any engine work exists.
   - accepts valid composite config
   - rejects zero permits
   - rejects invalid periods
-  - rejects missing composite secondary config
+  - rejects missing composite child config
   - rejects out-of-range failure rate
   - rejects invalid enum values
 
@@ -358,28 +389,29 @@ Expose live simulation updates over SSE in a Datastar-friendly format.
 - event loss is measurable, not silent
 
 
-## Phase 6: Datastar Actions and Live Controls
+## Phase 6: Datastar Actions and Wizard Controls
 
 ### Goal
 
-Make the page interactive using Datastar as the only UI state mechanism outside the chart island.
+Make the page interactive using Datastar as the only UI state mechanism outside the chart island, while using a guided wizard as the primary control model.
 
 ### Tasks
 
-- Bind controls to `config.*` signals
+- Bind visible wizard controls to `config.*` signals
 - Implement Start button action
 - Implement Stop button action
-- Implement preset buttons that patch `config.*`
-- Implement debounced update behavior while running
+- Implement debounced update behavior for visible numeric controls while running
 - Add status and error fragments
 - Add form error rendering tied to `errors.form`
 - Add stream error rendering tied to `errors.stream`
+- Keep advanced traffic tuning fields in the config and validation model even if they are not exposed in the current page
+- Defer scenarios and presets until they fit the wizard model cleanly
 
 ### Tests
 
 - `PageTest`
   - required Datastar attributes are present
-  - expected signal-bound controls exist
+  - expected wizard steps and signal-bound controls exist
   - stream anchor placeholder region exists
 - `RoutesTest`
   - update route applies valid changes
@@ -388,7 +420,26 @@ Make the page interactive using Datastar as the only UI state mechanism outside 
 ### Done When
 
 - no custom browser transport client exists
-- normal UI behavior is driven by Datastar actions and signal patches
+- normal wizard and runtime behavior is driven by Datastar actions and signal patches
+- the currently visible controls can update a running simulation without route-specific browser logic
+
+### Scenario and Preset Direction
+
+The repo already contains an unfinished `renderPresetsPanel()` helper.
+If scenarios are revived, they should be treated as quick-start recipes that work with the wizard instead of competing with it.
+
+Recommended direction:
+
+- mount scenario buttons above step 1 or in the page header
+- let a scenario patch both limiter and traffic signals
+- also advance `ui.step` so the page reflects the loaded recipe
+- keep `Start` explicit in idle state
+- when already running, reuse the existing `PATCH /simulations/:id` flow
+
+Not planned:
+
+- separate limiter-only and traffic-only preset rows
+- exposing advanced traffic controls solely to support scenario recipes
 
 
 ## Phase 7: Chart Island
@@ -458,12 +509,13 @@ Tighten correctness, maintainability, and repo quality.
 
 ## Route Checklist
 
-These are the routes expected in the finished app:
+These are the routes currently expected in the shipped app:
 
 - `GET /`
 - `POST /simulations`
 - `PATCH /simulations/:id`
 - `DELETE /simulations/:id`
+- `POST /simulations/:id/resume`
 - `GET /simulations/:id/stream`
 
 Optional later:
@@ -488,17 +540,21 @@ These fragments are worth keeping separate:
 
 ## Signal Checklist
 
-Minimum finished signal set:
+Minimum signal set for the current implementation:
 
 - `sim.id`
 - `sim.running`
 - `sim.status`
-- `config.type`
+- `ui.step`
+- `config.limiterType`
 - `config.permits`
 - `config.perSeconds`
 - `config.warmupSeconds`
-- `config.secondaryPermits`
-- `config.secondaryPerSeconds`
+- `config.compositeCount`
+- `config.child{n}Type`
+- `config.child{n}Permits`
+- `config.child{n}PerSeconds`
+- `config.child{n}WarmupSeconds`
 - `config.requestsPerSecond`
 - `config.overflowMode`
 - `config.apiTarget`
@@ -519,6 +575,9 @@ Minimum finished signal set:
 - `stats.p95LatencyMs`
 - `errors.form`
 - `errors.stream`
+
+Not every config signal above is exposed in the page today.
+The advanced traffic fields remain part of the model even though the wizard currently exposes only `requestsPerSecond`.
 
 
 ## What To Reuse From The Existing Code
@@ -560,6 +619,22 @@ If implementing sequentially, use this exact order:
 16. README and CI cleanup
 
 
+## Current Roadmap
+
+### Planned
+
+- remove legacy WebSocket and demo-only code so the repo has one clear transport story
+- add a README with run instructions and architecture notes
+- add basic CI for `./gradlew test`
+- keep the docs aligned with the shipped wizard and resume route
+
+### Potential, Not Planned
+
+- expose `apiTarget`, `serviceTimeMs`, `jitterMs`, `failureRate`, and `workerConcurrency` in the page
+- add scenario or preset quick-start recipes above the wizard
+- revisit a section-based information architecture if the wizard stops carrying its weight
+
+
 ## Definition of Done
 
 The implementation is complete when:
@@ -572,4 +647,3 @@ The implementation is complete when:
 - overload effects are measured explicitly
 - routes and simulation behavior are covered by tests
 - generated build artifacts are not tracked in git
-

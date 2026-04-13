@@ -15,21 +15,22 @@ import kotlinx.html.span
 import kotlinx.html.stream.createHTML
 import kotlinx.html.ul
 
-val ConfigFieldIds: List<String> = listOf(
-    "limiterType",
-    "permits",
-    "perSeconds",
-    "warmupSeconds",
-    "secondaryPermits",
-    "secondaryPerSeconds",
-    "requestsPerSecond",
-    "overflowMode",
-    "apiTarget",
-    "serviceTimeMs",
-    "jitterMs",
-    "failureRate",
-    "workerConcurrency",
-)
+val ConfigFieldIds: List<String> =
+    listOf(
+        "limiterType",
+        "permits",
+        "perSeconds",
+        "warmupSeconds",
+        "secondaryPermits",
+        "secondaryPerSeconds",
+        "requestsPerSecond",
+        "overflowMode",
+        "apiTarget",
+        "serviceTimeMs",
+        "jitterMs",
+        "failureRate",
+        "workerConcurrency",
+    )
 
 fun fieldErrorId(field: String): String = "field-error-$field"
 
@@ -45,13 +46,19 @@ fun FlowContent.renderFormErrorsSlot() {
     }
 }
 
-fun renderFieldErrorFragment(field: String, message: String?): String =
+fun renderFieldErrorFragment(
+    field: String,
+    message: String?,
+): String =
     createHTML().div("field-error") {
         id = fieldErrorId(field)
         if (!message.isNullOrEmpty()) +message
     }
 
-fun renderFormErrorsFragment(errors: List<FieldError>, globalErrors: List<String> = emptyList()): String =
+fun renderFormErrorsFragment(
+    errors: List<FieldError>,
+    globalErrors: List<String> = emptyList(),
+): String =
     createHTML().div("form-errors") {
         id = "errors-form"
         if (globalErrors.isNotEmpty() || errors.isNotEmpty()) {
@@ -147,39 +154,43 @@ data class SimulationPreset(
     val updates: Map<String, String>,
 )
 
-val DefaultPresets: List<SimulationPreset> = listOf(
-    SimulationPreset(
-        id = "low",
-        label = "Low (1 rps)",
-        updates = mapOf(
-            "requestsPerSecond" to "1",
-            "limiterType" to "bursty",
-            "permits" to "5",
-            "perSeconds" to "1.0",
+val DefaultPresets: List<SimulationPreset> =
+    listOf(
+        SimulationPreset(
+            id = "low",
+            label = "Low (1 rps)",
+            updates =
+                mapOf(
+                    "requestsPerSecond" to "1",
+                    "limiterType" to "bursty",
+                    "permits" to "5",
+                    "perSeconds" to "1.0",
+                ),
         ),
-    ),
-    SimulationPreset(
-        id = "burst",
-        label = "Burst (100 rps)",
-        updates = mapOf(
-            "requestsPerSecond" to "100",
-            "limiterType" to "bursty",
-            "permits" to "20",
-            "perSeconds" to "1.0",
+        SimulationPreset(
+            id = "burst",
+            label = "Burst (100 rps)",
+            updates =
+                mapOf(
+                    "requestsPerSecond" to "100",
+                    "limiterType" to "bursty",
+                    "permits" to "20",
+                    "perSeconds" to "1.0",
+                ),
         ),
-    ),
-    SimulationPreset(
-        id = "smooth",
-        label = "Smooth ramp",
-        updates = mapOf(
-            "requestsPerSecond" to "50",
-            "limiterType" to "smooth",
-            "permits" to "10",
-            "perSeconds" to "1.0",
-            "warmupSeconds" to "3",
+        SimulationPreset(
+            id = "smooth",
+            label = "Smooth ramp",
+            updates =
+                mapOf(
+                    "requestsPerSecond" to "50",
+                    "limiterType" to "smooth",
+                    "permits" to "10",
+                    "perSeconds" to "1.0",
+                    "warmupSeconds" to "3",
+                ),
         ),
-    ),
-)
+    )
 
 fun FlowContent.renderPresetsPanel() {
     div {
@@ -189,10 +200,11 @@ fun FlowContent.renderPresetsPanel() {
             button(type = ButtonType.button, classes = "preset-button") {
                 id = "preset-${preset.id}"
                 attributes["data-preset"] = preset.id
-                val signalUpdates = preset.updates.entries.joinToString(", ") { (k, v) ->
-                    val literal = if (v.toDoubleOrNull() != null) v else "'$v'"
-                    "\$config.$k = $literal"
-                }
+                val signalUpdates =
+                    preset.updates.entries.joinToString(", ") { (k, v) ->
+                        val literal = if (v.toDoubleOrNull() != null) v else "'$v'"
+                        "\$config.$k = $literal"
+                    }
                 attributes["data-on-click"] =
                     "($signalUpdates, \$sim.running && @patch('/simulations/' + \$sim.id))"
                 +preset.label
@@ -254,8 +266,9 @@ fun renderLifecycleControlsFragment(handle: SimulationHandle?): String {
     }
 }
 
-private fun badgeClass(handle: SimulationHandle?): String = when {
-    handle == null -> "status-badge-idle"
-    handle.isRunning -> "status-badge-running"
-    else -> "status-badge-stopped"
-}
+private fun badgeClass(handle: SimulationHandle?): String =
+    when {
+        handle == null -> "status-badge-idle"
+        handle.isRunning -> "status-badge-running"
+        else -> "status-badge-stopped"
+    }

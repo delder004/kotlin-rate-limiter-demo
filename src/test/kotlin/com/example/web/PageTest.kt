@@ -31,9 +31,10 @@ class PageTest {
 
     @Test
     fun `step 1 offers a limiter choice with button options`() {
-        val step = rendered
-            .substringAfter("id=\"step-limiter\"")
-            .substringBefore("id=\"step-permits\"")
+        val step =
+            rendered
+                .substringAfter("id=\"step-limiter\"")
+                .substringBefore("id=\"step-permits\"")
         assertTrue("Choose your limiter:" in step, "step heading missing")
         for (value in listOf("bursty", "smooth", "composite")) {
             assertTrue("id=\"limiter-$value\"" in step, "missing limiter button $value")
@@ -50,9 +51,10 @@ class PageTest {
 
     @Test
     fun `step 2 reveals permits slider after limiter is chosen`() {
-        val step = rendered
-            .substringAfter("id=\"step-permits\"")
-            .substringBefore("id=\"step-traffic\"")
+        val step =
+            rendered
+                .substringAfter("id=\"step-permits\"")
+                .substringBefore("id=\"step-traffic\"")
         assertTrue("Permits:" in step, "step heading missing")
         assertTrue(
             "\$ui.step &gt;= 2" in step && "limiterType !== 'composite'" in step,
@@ -71,9 +73,10 @@ class PageTest {
 
     @Test
     fun `step 3 reveals traffic slider after permits`() {
-        val step = rendered
-            .substringAfter("id=\"step-traffic\"")
-            .substringBefore("id=\"step-start\"")
+        val step =
+            rendered
+                .substringAfter("id=\"step-traffic\"")
+                .substringBefore("id=\"step-start\"")
         assertTrue("Requests per sec:" in step, "step heading missing")
         assertTrue("data-show=\"\$ui.step &gt;= 3\"" in step, "step-traffic should be gated")
         assertTrue("id=\"input-requestsPerSecond\"" in step, "rps slider missing")
@@ -88,10 +91,36 @@ class PageTest {
     }
 
     @Test
+    fun `step 3 exposes advanced traffic sliders for service time jitter failure rate and worker concurrency`() {
+        val step =
+            rendered
+                .substringAfter("id=\"step-traffic\"")
+                .substringBefore("id=\"step-start\"")
+        assertTrue("traffic-advanced" in step, "advanced disclosure wrapper missing")
+        assertTrue("<summary>Advanced</summary>" in step, "advanced summary label missing")
+        val fields =
+            listOf(
+                "serviceTimeMs" to "config.serviceTimeMs",
+                "jitterMs" to "config.jitterMs",
+                "failureRate" to "config.failureRate",
+                "workerConcurrency" to "config.workerConcurrency",
+            )
+        for ((field, signal) in fields) {
+            assertTrue("id=\"input-$field\"" in step, "$field slider missing")
+            assertTrue("data-bind=\"$signal\"" in step, "$field bind missing")
+            assertTrue(
+                "id=\"${fieldErrorId(field)}\"" in step,
+                "$field error slot missing",
+            )
+        }
+    }
+
+    @Test
     fun `step 4 reveals start button`() {
-        val step = rendered
-            .substringAfter("id=\"step-start\"")
-            .substringBefore("id=\"run-panels\"")
+        val step =
+            rendered
+                .substringAfter("id=\"step-start\"")
+                .substringBefore("id=\"run-panels\"")
         assertTrue("data-show=\"\$ui.step &gt;= 4\"" in step, "step-start should be gated")
         assertTrue("id=\"$LIFECYCLE_CONTROLS_ID\"" in step, "lifecycle-controls slot missing")
         assertTrue("id=\"start-button\"" in step, "start button missing")
@@ -100,8 +129,9 @@ class PageTest {
 
     @Test
     fun `run panels become visible once start is clicked and stay visible after stop`() {
-        val runPanels = rendered
-            .substringAfter("id=\"run-panels\"")
+        val runPanels =
+            rendered
+                .substringAfter("id=\"run-panels\"")
         assertTrue(
             "data-show=\"\$ui.step &gt;= 5\"" in runPanels,
             "run-panels should be gated on ui.step >= 5 so they persist after Stop",

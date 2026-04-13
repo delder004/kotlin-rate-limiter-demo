@@ -16,21 +16,22 @@ data class MetricsSnapshot(
     val p95LatencyMs: Long,
 ) {
     companion object {
-        val Empty = MetricsSnapshot(
-            timeMs = 0,
-            queued = 0,
-            inFlight = 0,
-            admitted = 0,
-            completed = 0,
-            denied = 0,
-            droppedIncoming = 0,
-            droppedOutgoing = 0,
-            acceptRate = 0.0,
-            rejectRate = 0.0,
-            avgLatencyMs = 0,
-            p50LatencyMs = 0,
-            p95LatencyMs = 0,
-        )
+        val Empty =
+            MetricsSnapshot(
+                timeMs = 0,
+                queued = 0,
+                inFlight = 0,
+                admitted = 0,
+                completed = 0,
+                denied = 0,
+                droppedIncoming = 0,
+                droppedOutgoing = 0,
+                acceptRate = 0.0,
+                rejectRate = 0.0,
+                avgLatencyMs = 0,
+                p50LatencyMs = 0,
+                p95LatencyMs = 0,
+            )
     }
 }
 

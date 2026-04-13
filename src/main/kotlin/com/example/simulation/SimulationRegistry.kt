@@ -13,11 +13,12 @@ class SimulationRegistry(
     private val handles = ConcurrentHashMap<String, SimulationHandle>()
 
     fun create(config: SimulationConfig): SimulationHandle {
-        val handle = SimulationHandle(
-            id = idGenerator(),
-            initialConfig = config,
-            createdAt = Instant.now(clock),
-        )
+        val handle =
+            SimulationHandle(
+                id = idGenerator(),
+                initialConfig = config,
+                createdAt = Instant.now(clock),
+            )
         handles[handle.id] = handle
         engine.start(handle)
         return handle
@@ -27,7 +28,10 @@ class SimulationRegistry(
 
     fun list(): List<SimulationHandle> = handles.values.toList()
 
-    fun update(id: String, newConfig: SimulationConfig): UpdateResult {
+    fun update(
+        id: String,
+        newConfig: SimulationConfig,
+    ): UpdateResult {
         val handle = handles[id] ?: return UpdateResult.NotFound
         synchronized(handle) {
             if (handle.status != SimulationStatus.RUNNING) {
@@ -57,16 +61,27 @@ class SimulationRegistry(
         return UpdateResult.Updated(handle)
     }
 
-    private fun limiterShapeChanged(old: SimulationConfig, new: SimulationConfig): Boolean =
+    private fun limiterShapeChanged(
+        old: SimulationConfig,
+        new: SimulationConfig,
+    ): Boolean =
         old.limiterType != new.limiterType ||
             old.permits != new.permits ||
             old.perSeconds != new.perSeconds ||
             old.warmupSeconds != new.warmupSeconds ||
             old.compositeChildren != new.compositeChildren
 
-    private fun configDiff(old: SimulationConfig, new: SimulationConfig): String {
+    private fun configDiff(
+        old: SimulationConfig,
+        new: SimulationConfig,
+    ): String {
         val changes = mutableListOf<String>()
-        fun <T> check(name: String, o: T, n: T) {
+
+        fun <T> check(
+            name: String,
+            o: T,
+            n: T,
+        ) {
             if (o != n) changes += "$name $o→$n"
         }
         check("limiter", old.limiterType.wire, new.limiterType.wire)
@@ -110,18 +125,23 @@ class SimulationRegistry(
 
     sealed class UpdateResult {
         data class Updated(val handle: SimulationHandle) : UpdateResult()
+
         object NotFound : UpdateResult()
+
         object NotRunning : UpdateResult()
     }
 
     sealed class ResumeResult {
         data class Resumed(val handle: SimulationHandle) : ResumeResult()
+
         data class AlreadyRunning(val handle: SimulationHandle) : ResumeResult()
+
         object NotFound : ResumeResult()
     }
 
     private class DefaultIdGenerator : () -> String {
         private val counter = AtomicLong(0)
+
         override fun invoke(): String {
             val n = counter.incrementAndGet()
             val suffix = java.util.UUID.randomUUID().toString().take(8)

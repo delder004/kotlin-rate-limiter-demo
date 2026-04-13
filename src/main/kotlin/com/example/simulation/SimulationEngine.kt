@@ -34,7 +34,6 @@ class CoroutineSimulationEngine(
     private val metricsIntervalMs: Long = 100,
     private val requestQueueCapacity: Int = 1000,
 ) : SimulationEngine {
-
     override fun start(handle: SimulationHandle) {
         val job = scope.launch { runLoop(handle) }
         handle.engineJob = job
@@ -48,41 +47,44 @@ class CoroutineSimulationEngine(
         }
     }
 
-    private suspend fun runInnerLoop(handle: SimulationHandle) = coroutineScope {
-        val initialConfig = handle.config
-        handle.limiterRef.set(limiterFactory(initialConfig))
-        val limiter = LiveEngineLimiter(handle.limiterRef)
-        val startMs = timeSource()
+    private suspend fun runInnerLoop(handle: SimulationHandle) =
+        coroutineScope {
+            val initialConfig = handle.config
+            handle.limiterRef.set(limiterFactory(initialConfig))
+            val limiter = LiveEngineLimiter(handle.limiterRef)
+            val startMs = timeSource()
 
-        // Seed cumulative counters from the last snapshot so resume picks up
-        // where stop left off. Queued/in-flight reset because the request
-        // channel and workers were destroyed when the engine job was cancelled.
-        val prev = handle.currentMetrics
-        val queued = AtomicInteger(0)
-        val admitted = AtomicLong(prev.admitted)
-        val completed = AtomicLong(prev.completed)
-        val denied = AtomicLong(prev.denied)
-        val droppedIncoming = AtomicLong(prev.droppedIncoming)
-        val inFlight = AtomicInteger(0)
-        val latencies = ConcurrentLinkedQueue<Long>()
+            // Seed cumulative counters from the last snapshot so resume picks up
+            // where stop left off. Queued/in-flight reset because the request
+            // channel and workers were destroyed when the engine job was cancelled.
+            val prev = handle.currentMetrics
+            val queued = AtomicInteger(0)
+            val admitted = AtomicLong(prev.admitted)
+            val completed = AtomicLong(prev.completed)
+            val denied = AtomicLong(prev.denied)
+            val droppedIncoming = AtomicLong(prev.droppedIncoming)
+            val inFlight = AtomicInteger(0)
+            val latencies = ConcurrentLinkedQueue<Long>()
 
-        val requestChannel = Channel<Long>(capacity = requestQueueCapacity)
+            val requestChannel = Channel<Long>(capacity = requestQueueCapacity)
 
-        val producer = launch { runProducer(limiter, startMs, requestChannel, queued, admitted, denied, droppedIncoming, handle) }
-        val workerJobs = List(initialConfig.workerConcurrency) {
-            launch { runWorker(limiter, startMs, requestChannel, queued, admitted, completed, inFlight, latencies, handle) }
+            val producer = launch { runProducer(limiter, startMs, requestChannel, queued, admitted, denied, droppedIncoming, handle) }
+            val workerJobs =
+                List(initialConfig.workerConcurrency) {
+                    launch { runWorker(limiter, startMs, requestChannel, queued, admitted, completed, inFlight, latencies, handle) }
+                }
+            val reporter =
+                launch { runReporter(handle, startMs, queued, admitted, completed, denied, droppedIncoming, inFlight, latencies) }
+
+            try {
+                producer.join()
+            } finally {
+                producer.cancel()
+                workerJobs.forEach { it.cancel() }
+                reporter.cancel()
+                requestChannel.close()
+            }
         }
-        val reporter = launch { runReporter(handle, startMs, queued, admitted, completed, denied, droppedIncoming, inFlight, latencies) }
-
-        try {
-            producer.join()
-        } finally {
-            producer.cancel()
-            workerJobs.forEach { it.cancel() }
-            reporter.cancel()
-            requestChannel.close()
-        }
-    }
 
     private suspend fun runProducer(
         limiter: EngineLimiter,
@@ -117,12 +119,13 @@ class CoroutineSimulationEngine(
                         }
                         is EnginePermit.Denied -> {
                             denied.incrementAndGet()
-                            val entry = LogEntry(
-                                timeMs = arrivalMs,
-                                status = 429,
-                                latencyMs = 0,
-                                body = "rate limited",
-                            )
+                            val entry =
+                                LogEntry(
+                                    timeMs = arrivalMs,
+                                    status = 429,
+                                    latencyMs = 0,
+                                    body = "rate limited",
+                                )
                             handle.appendLog(entry)
                             handle.publish(SimulationEvent.ResponseSample(handle.id, entry))
                         }
@@ -168,12 +171,13 @@ class CoroutineSimulationEngine(
             latencies.add(latency)
             completed.incrementAndGet()
             inFlight.decrementAndGet()
-            val entry = LogEntry(
-                timeMs = completionMs,
-                status = if (failed) 500 else 200,
-                latencyMs = latency,
-                body = if (failed) "simulated failure" else "ok",
-            )
+            val entry =
+                LogEntry(
+                    timeMs = completionMs,
+                    status = if (failed) 500 else 200,
+                    latencyMs = latency,
+                    body = if (failed) "simulated failure" else "ok",
+                )
             handle.appendLog(entry)
             handle.publish(SimulationEvent.ResponseSample(handle.id, entry))
         }
@@ -202,10 +206,13 @@ class CoroutineSimulationEngine(
             buf.sort()
             val avg = if (buf.isEmpty()) 0L else buf.average().toLong()
             val p50 = if (buf.isEmpty()) 0L else buf[buf.size / 2]
-            val p95 = if (buf.isEmpty()) 0L else {
-                val idx = ((buf.size - 1) * 0.95).toInt().coerceAtMost(buf.size - 1)
-                buf[idx]
-            }
+            val p95 =
+                if (buf.isEmpty()) {
+                    0L
+                } else {
+                    val idx = ((buf.size - 1) * 0.95).toInt().coerceAtMost(buf.size - 1)
+                    buf[idx]
+                }
             val admittedNow = admitted.get()
             val deniedNow = denied.get()
             val dt = metricsIntervalMs / 1000.0
@@ -214,28 +221,28 @@ class CoroutineSimulationEngine(
             lastAdmitted = admittedNow
             lastDenied = deniedNow
 
-            val snapshot = MetricsSnapshot(
-                timeMs = timeSource() - startMs,
-                queued = queued.get().coerceAtLeast(0),
-                inFlight = inFlight.get().coerceAtLeast(0),
-                admitted = admittedNow,
-                completed = completed.get(),
-                denied = deniedNow,
-                droppedIncoming = droppedIncoming.get(),
-                droppedOutgoing = handle.droppedOutgoingCount,
-                acceptRate = acceptRate,
-                rejectRate = rejectRate,
-                avgLatencyMs = avg,
-                p50LatencyMs = p50,
-                p95LatencyMs = p95,
-            )
+            val snapshot =
+                MetricsSnapshot(
+                    timeMs = timeSource() - startMs,
+                    queued = queued.get().coerceAtLeast(0),
+                    inFlight = inFlight.get().coerceAtLeast(0),
+                    admitted = admittedNow,
+                    completed = completed.get(),
+                    denied = deniedNow,
+                    droppedIncoming = droppedIncoming.get(),
+                    droppedOutgoing = handle.droppedOutgoingCount,
+                    acceptRate = acceptRate,
+                    rejectRate = rejectRate,
+                    avgLatencyMs = avg,
+                    p50LatencyMs = p50,
+                    p95LatencyMs = p95,
+                )
             handle.updateMetrics(snapshot)
             handle.publish(SimulationEvent.MetricSample(handle.id, snapshot))
         }
     }
 
-    private suspend fun currentScopeActive(): Boolean =
-        kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive ?: true
+    private suspend fun currentScopeActive(): Boolean = kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive ?: true
 }
 
 private class LiveEngineLimiter(
@@ -245,6 +252,5 @@ private class LiveEngineLimiter(
         ref.get()?.acquire()
     }
 
-    override fun tryAcquire(): EnginePermit =
-        ref.get()?.tryAcquire() ?: EnginePermit.Granted
+    override fun tryAcquire(): EnginePermit = ref.get()?.tryAcquire() ?: EnginePermit.Granted
 }
