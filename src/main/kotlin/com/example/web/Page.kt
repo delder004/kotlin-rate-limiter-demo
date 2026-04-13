@@ -81,9 +81,11 @@ private val PAGE_CSS =
       transition: background 0.15s, border-color 0.15s, transform 0.05s;
     }
 
-    .preset-button:hover {
+    .preset-button:hover,
+    .preset-button:focus {
       border-color: #1f2421;
       background: #f8f9f5;
+      outline: none;
     }
 
     .preset-button:active {
