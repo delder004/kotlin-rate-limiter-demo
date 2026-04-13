@@ -11,8 +11,7 @@ class ValidationTest {
         permits: String? = "5",
         perSeconds: String? = "1.0",
         warmupSeconds: String? = "0",
-        secondaryPermits: String? = null,
-        secondaryPerSeconds: String? = null,
+        compositeChildren: List<RawCompositeChild> = emptyList(),
         requestsPerSecond: String? = "5.0",
         overflowMode: String? = "queue",
         apiTarget: String? = "none",
@@ -21,10 +20,19 @@ class ValidationTest {
         failureRate: String? = "0.0",
         workerConcurrency: String? = "50",
     ) = RawSimulationConfig(
-        limiterType, permits, perSeconds, warmupSeconds,
-        secondaryPermits, secondaryPerSeconds,
-        requestsPerSecond, overflowMode, apiTarget,
-        serviceTimeMs, jitterMs, failureRate, workerConcurrency,
+        limiterType = limiterType,
+        permits = permits,
+        perSeconds = perSeconds,
+        warmupSeconds = warmupSeconds,
+        compositeCount = compositeChildren.size.takeIf { it > 0 }?.toString(),
+        compositeChildren = compositeChildren,
+        requestsPerSecond = requestsPerSecond,
+        overflowMode = overflowMode,
+        apiTarget = apiTarget,
+        serviceTimeMs = serviceTimeMs,
+        jitterMs = jitterMs,
+        failureRate = failureRate,
+        workerConcurrency = workerConcurrency,
     )
 
     private fun assertValid(raw: RawSimulationConfig): SimulationConfig {
@@ -63,13 +71,20 @@ class ValidationTest {
         val config = assertValid(
             baseRaw(
                 limiterType = "composite",
-                secondaryPermits = "10",
-                secondaryPerSeconds = "60.0",
+                compositeChildren = listOf(
+                    RawCompositeChild(limiterType = "bursty", permits = "10", perSeconds = "1.0", warmupSeconds = "0"),
+                    RawCompositeChild(limiterType = "smooth", permits = "1000", perSeconds = "3600.0", warmupSeconds = "2"),
+                ),
             ),
         )
         assertEquals(LimiterType.COMPOSITE, config.limiterType)
-        assertEquals(10, config.secondaryPermits)
-        assertEquals(60.0, config.secondaryPerSeconds)
+        assertEquals(2, config.compositeChildren.size)
+        assertEquals(LimiterType.BURSTY, config.compositeChildren[0].limiterType)
+        assertEquals(10, config.compositeChildren[0].permits)
+        assertEquals(LimiterType.SMOOTH, config.compositeChildren[1].limiterType)
+        assertEquals(1000, config.compositeChildren[1].permits)
+        assertEquals(3600.0, config.compositeChildren[1].perSeconds)
+        assertEquals(2.0, config.compositeChildren[1].warmupSeconds)
     }
 
     @Test
@@ -124,30 +139,49 @@ class ValidationTest {
     }
 
     @Test
-    fun `composite missing secondary permits rejected`() {
+    fun `composite with no children rejected`() {
         assertInvalidOnField(
-            baseRaw(limiterType = "composite", secondaryPerSeconds = "10"),
-            "secondaryPermits",
+            baseRaw(limiterType = "composite", compositeChildren = emptyList()),
+            "compositeChildren",
         )
     }
 
     @Test
-    fun `composite missing secondary perSeconds rejected`() {
-        assertInvalidOnField(
-            baseRaw(limiterType = "composite", secondaryPermits = "5"),
-            "secondaryPerSeconds",
-        )
-    }
-
-    @Test
-    fun `composite zero secondary permits rejected`() {
+    fun `composite missing child permits rejected`() {
         assertInvalidOnField(
             baseRaw(
                 limiterType = "composite",
-                secondaryPermits = "0",
-                secondaryPerSeconds = "10",
+                compositeChildren = listOf(
+                    RawCompositeChild(limiterType = "bursty", permits = null, perSeconds = "10"),
+                ),
             ),
-            "secondaryPermits",
+            "child0Permits",
+        )
+    }
+
+    @Test
+    fun `composite missing child perSeconds rejected`() {
+        assertInvalidOnField(
+            baseRaw(
+                limiterType = "composite",
+                compositeChildren = listOf(
+                    RawCompositeChild(limiterType = "bursty", permits = "5", perSeconds = null),
+                ),
+            ),
+            "child0PerSeconds",
+        )
+    }
+
+    @Test
+    fun `composite zero child permits rejected`() {
+        assertInvalidOnField(
+            baseRaw(
+                limiterType = "composite",
+                compositeChildren = listOf(
+                    RawCompositeChild(limiterType = "bursty", permits = "0", perSeconds = "10"),
+                ),
+            ),
+            "child0Permits",
         )
     }
 

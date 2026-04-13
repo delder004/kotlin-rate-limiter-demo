@@ -32,13 +32,25 @@ enum class ApiTarget(val wire: String) {
     }
 }
 
+data class CompositeChild(
+    val limiterType: LimiterType,
+    val permits: Int,
+    val perSeconds: Double,
+    val warmupSeconds: Double,
+) {
+    init {
+        require(limiterType != LimiterType.COMPOSITE) {
+            "composite children cannot themselves be composite"
+        }
+    }
+}
+
 data class SimulationConfig(
     val limiterType: LimiterType,
     val permits: Int,
     val perSeconds: Double,
     val warmupSeconds: Double,
-    val secondaryPermits: Int?,
-    val secondaryPerSeconds: Double?,
+    val compositeChildren: List<CompositeChild> = emptyList(),
     val requestsPerSecond: Double,
     val overflowMode: OverflowMode,
     val apiTarget: ApiTarget,

@@ -91,6 +91,13 @@ fun DatastarResponse.patchLifecycleControls(
 fun DatastarResponse.patchStreamAnchor(handle: SimulationHandle?): DatastarResponse =
     mergeFragment(renderStreamAnchorFragment(handle))
 
+fun DatastarResponse.prependStatusLogEntry(message: String): DatastarResponse =
+    mergeFragment(
+        html = renderStatusLogEntryFragment(message),
+        selector = "#$STATUS_LOG_ID",
+        mergeMode = "prepend",
+    )
+
 fun buildStatsSignalsJson(s: MetricsSnapshot): String =
     """{"stats":{"queued":${s.queued},"inFlight":${s.inFlight},"admitted":${s.admitted},"completed":${s.completed},"denied":${s.denied},"droppedIncoming":${s.droppedIncoming},"droppedOutgoing":${s.droppedOutgoing},"acceptRate":${s.acceptRate},"rejectRate":${s.rejectRate},"avgLatencyMs":${s.avgLatencyMs},"p50LatencyMs":${s.p50LatencyMs},"p95LatencyMs":${s.p95LatencyMs}}}"""
 
@@ -114,14 +121,14 @@ object StreamEventMapper {
             DatastarEvent.MergeFragments(
                 html = renderLogRowFragment(event.entry),
                 selector = "#$LOG_LIST_ID",
-                mergeMode = "append",
+                mergeMode = "prepend",
             ),
         )
         is SimulationEvent.Warning -> listOf(
             DatastarEvent.MergeFragments(
-                html = renderWarningFragment(event.message),
-                selector = "#$WARNINGS_ID",
-                mergeMode = "append",
+                html = renderStatusLogEntryFragment(event.message),
+                selector = "#$STATUS_LOG_ID",
+                mergeMode = "prepend",
             ),
         )
         is SimulationEvent.Stopped -> listOf(

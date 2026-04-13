@@ -13,15 +13,13 @@ class LimiterFactoryTest {
         permits: Int = 3,
         perSeconds: Double = 1.0,
         warmupSeconds: Double = 0.0,
-        secondaryPermits: Int? = null,
-        secondaryPerSeconds: Double? = null,
+        compositeChildren: List<CompositeChild> = emptyList(),
     ) = SimulationConfig(
         limiterType = type,
         permits = permits,
         perSeconds = perSeconds,
         warmupSeconds = warmupSeconds,
-        secondaryPermits = secondaryPermits,
-        secondaryPerSeconds = secondaryPerSeconds,
+        compositeChildren = compositeChildren,
         requestsPerSecond = 0.0,
         overflowMode = OverflowMode.QUEUE,
         apiTarget = ApiTarget.NONE,
@@ -52,8 +50,10 @@ class LimiterFactoryTest {
         val raw = LimiterFactory.buildRateLimiter(
             config(
                 LimiterType.COMPOSITE,
-                secondaryPermits = 2,
-                secondaryPerSeconds = 60.0,
+                compositeChildren = listOf(
+                    CompositeChild(LimiterType.BURSTY, permits = 5, perSeconds = 1.0, warmupSeconds = 0.0),
+                    CompositeChild(LimiterType.BURSTY, permits = 2, perSeconds = 60.0, warmupSeconds = 0.0),
+                ),
             ),
         )
         val name = raw::class.qualifiedName.orEmpty()
@@ -72,15 +72,15 @@ class LimiterFactoryTest {
     }
 
     @Test
-    fun `composite limiter respects stricter secondary tier`() = runTest {
-        // Primary: 10/sec, Secondary: 2/hour — secondary is the binding constraint.
+    fun `composite limiter respects stricter child tier`() = runTest {
+        // Two children: 10/sec and 2/hour — the 2/hour child is the binding constraint.
         val limiter = LimiterFactory.create(
             config(
                 LimiterType.COMPOSITE,
-                permits = 10,
-                perSeconds = 1.0,
-                secondaryPermits = 2,
-                secondaryPerSeconds = 3600.0,
+                compositeChildren = listOf(
+                    CompositeChild(LimiterType.BURSTY, permits = 10, perSeconds = 1.0, warmupSeconds = 0.0),
+                    CompositeChild(LimiterType.BURSTY, permits = 2, perSeconds = 3600.0, warmupSeconds = 0.0),
+                ),
             ),
         )
         val first = limiter.tryAcquire()
@@ -88,6 +88,6 @@ class LimiterFactoryTest {
         val third = limiter.tryAcquire()
         assertEquals(EnginePermit.Granted, first)
         assertEquals(EnginePermit.Granted, second)
-        assertFalse(third is EnginePermit.Granted, "secondary tier should cap at 2")
+        assertFalse(third is EnginePermit.Granted, "stricter child should cap at 2")
     }
 }

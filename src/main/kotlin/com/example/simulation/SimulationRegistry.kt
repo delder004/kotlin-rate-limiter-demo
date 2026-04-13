@@ -33,20 +33,65 @@ class SimulationRegistry(
             if (handle.status != SimulationStatus.RUNNING) {
                 return UpdateResult.NotRunning
             }
-            handle.engineJob?.cancel()
-            handle.resetForUpdate(newConfig, Instant.now(clock))
+            val oldConfig = handle.config
+            handle.applyUpdate(newConfig, Instant.now(clock))
+            // Only rebuild the limiter when something that actually changes
+            // its capacity policy moves. Rebuilding on every PATCH would hand
+            // workers a fresh, full token bucket each time a slider twitched,
+            // producing misleading throughput surges above the permits line.
+            if (limiterShapeChanged(oldConfig, newConfig)) {
+                handle.limiterRef.set(LimiterFactory.create(newConfig))
+            }
+            val diff = configDiff(oldConfig, newConfig)
+            val message = if (diff.isEmpty()) "Config Updated" else "Config Updated: $diff"
             handle.appendLog(
                 LogEntry(
                     timeMs = 0,
                     status = 0,
                     latencyMs = 0,
-                    body = "config updated",
+                    body = message,
                 ),
             )
-            handle.publish(SimulationEvent.Warning(handle.id, "config updated"))
-            engine.start(handle)
+            handle.publish(SimulationEvent.Warning(handle.id, message))
         }
         return UpdateResult.Updated(handle)
+    }
+
+    private fun limiterShapeChanged(old: SimulationConfig, new: SimulationConfig): Boolean =
+        old.limiterType != new.limiterType ||
+            old.permits != new.permits ||
+            old.perSeconds != new.perSeconds ||
+            old.warmupSeconds != new.warmupSeconds ||
+            old.compositeChildren != new.compositeChildren
+
+    private fun configDiff(old: SimulationConfig, new: SimulationConfig): String {
+        val changes = mutableListOf<String>()
+        fun <T> check(name: String, o: T, n: T) {
+            if (o != n) changes += "$name $o→$n"
+        }
+        check("limiter", old.limiterType.wire, new.limiterType.wire)
+        check("permits", old.permits, new.permits)
+        check("perSeconds", old.perSeconds, new.perSeconds)
+        check("requestsPerSecond", old.requestsPerSecond, new.requestsPerSecond)
+        check("overflow", old.overflowMode.wire, new.overflowMode.wire)
+        check("serviceTimeMs", old.serviceTimeMs, new.serviceTimeMs)
+        check("jitterMs", old.jitterMs, new.jitterMs)
+        check("failureRate", old.failureRate, new.failureRate)
+        return changes.joinToString(", ")
+    }
+
+    fun resume(id: String): ResumeResult {
+        val handle = handles[id] ?: return ResumeResult.NotFound
+        synchronized(handle) {
+            if (handle.status == SimulationStatus.RUNNING) {
+                return ResumeResult.AlreadyRunning(handle)
+            }
+            handle.status = SimulationStatus.RUNNING
+            handle.stoppedAt = null
+            handle.updatedAt = Instant.now(clock)
+            engine.start(handle)
+        }
+        return ResumeResult.Resumed(handle)
     }
 
     fun stop(id: String): SimulationHandle? {
@@ -67,6 +112,12 @@ class SimulationRegistry(
         data class Updated(val handle: SimulationHandle) : UpdateResult()
         object NotFound : UpdateResult()
         object NotRunning : UpdateResult()
+    }
+
+    sealed class ResumeResult {
+        data class Resumed(val handle: SimulationHandle) : ResumeResult()
+        data class AlreadyRunning(val handle: SimulationHandle) : ResumeResult()
+        object NotFound : ResumeResult()
     }
 
     private class DefaultIdGenerator : () -> String {

@@ -33,8 +33,6 @@ class SseStreamTest {
         permits = 5,
         perSeconds = 1.0,
         warmupSeconds = 0.0,
-        secondaryPermits = null,
-        secondaryPerSeconds = null,
         requestsPerSecond = 0.0,
         overflowMode = OverflowMode.QUEUE,
         apiTarget = ApiTarget.NONE,
@@ -158,7 +156,7 @@ class SseStreamTest {
     }
 
     @Test
-    fun `stream mapper produces log row fragment append patches`() {
+    fun `stream mapper produces log row fragment prepend patches`() {
         val entry = LogEntry(timeMs = 42, status = 200, latencyMs = 15, body = "ok")
         val events = StreamEventMapper.toDatastarEvents(
             SimulationEvent.ResponseSample(simulationId = "sim-1", entry = entry),
@@ -167,7 +165,7 @@ class SseStreamTest {
         val body = events.first().render()
         assertTrue("datastar-merge-fragments" in body)
         assertTrue("selector #$LOG_LIST_ID" in body)
-        assertTrue("mergeMode append" in body)
+        assertTrue("mergeMode prepend" in body)
         assertTrue("status=200" in body)
     }
 

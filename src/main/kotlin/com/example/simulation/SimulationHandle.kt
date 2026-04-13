@@ -39,6 +39,8 @@ class SimulationHandle internal constructor(
     private val subscribers = CopyOnWriteArraySet<SimulationSubscriber>()
     private val droppedOutgoingRef = AtomicLong(0)
 
+    internal val limiterRef: AtomicReference<EngineLimiter?> = AtomicReference(null)
+
     @Volatile
     internal var engineJob: Job? = null
 
@@ -90,10 +92,9 @@ class SimulationHandle internal constructor(
         metricsRef.set(snapshot)
     }
 
-    internal fun resetForUpdate(newConfig: SimulationConfig, at: Instant) {
+    internal fun applyUpdate(newConfig: SimulationConfig, at: Instant) {
         config = newConfig
         updatedAt = at
-        metricsRef.set(MetricsSnapshot.Empty)
     }
 
     internal fun appendLog(entry: LogEntry) {

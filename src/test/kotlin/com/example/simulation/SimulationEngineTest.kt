@@ -24,8 +24,6 @@ class SimulationEngineTest {
         permits = 1000,
         perSeconds = 1.0,
         warmupSeconds = 0.0,
-        secondaryPermits = null,
-        secondaryPerSeconds = null,
         requestsPerSecond = requestsPerSecond,
         overflowMode = overflowMode,
         apiTarget = ApiTarget.NONE,

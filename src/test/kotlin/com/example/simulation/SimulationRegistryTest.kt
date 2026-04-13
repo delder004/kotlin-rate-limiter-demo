@@ -31,8 +31,6 @@ class SimulationRegistryTest {
         permits = 5,
         perSeconds = 1.0,
         warmupSeconds = 0.0,
-        secondaryPermits = null,
-        secondaryPerSeconds = null,
         requestsPerSecond = 5.0,
         overflowMode = OverflowMode.QUEUE,
         apiTarget = ApiTarget.NONE,
@@ -129,13 +127,15 @@ class SimulationRegistryTest {
     }
 
     @Test
-    fun `update appends a config-updated log entry`() {
+    fun `update appends a Config Updated log entry describing what changed`() {
         val registry = newRegistry()
         val created = registry.create(sampleConfig())
         registry.update(created.id, sampleConfig().copy(requestsPerSecond = 42.0))
+        val entry = created.recentLogs.firstOrNull { it.body.startsWith("Config Updated") }
+        assertNotNull(entry, "expected a Config Updated audit log entry")
         assertTrue(
-            created.recentLogs.any { it.body == "config updated" },
-            "expected config-updated audit log",
+            "requestsPerSecond" in entry.body,
+            "entry should name the changed field, got: ${entry.body}",
         )
     }
 

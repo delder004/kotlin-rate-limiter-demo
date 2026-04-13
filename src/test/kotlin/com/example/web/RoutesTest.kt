@@ -46,7 +46,7 @@ class RoutesTest {
         val body = response.bodyAsText()
         assertTrue("Rate Limiter Sandbox" in body)
         assertTrue("id=\"page-root\"" in body)
-        assertTrue("id=\"controls-panel\"" in body)
+        assertTrue("id=\"step-limiter\"" in body)
         assertTrue("id=\"stats-panel\"" in body)
         assertTrue("id=\"chart-panel\"" in body)
         assertTrue("id=\"log-panel\"" in body)
@@ -119,7 +119,8 @@ class RoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
         assertTrue("\"running\":false" in body)
-        assertTrue("\"status\":\"idle\"" in body)
+        assertTrue("\"status\":\"stopped\"" in body)
+        assertTrue("\"${handle.id}\"" in body, "stopped response should retain sim.id for resume")
 
         val stored = registry.get(handle.id)
         assertNotNull(stored)
@@ -165,7 +166,6 @@ class RoutesTest {
         val body = response.bodyAsText()
         assertTrue("datastar-merge-signals" in body)
         assertTrue("\"id\":\"$originalId\"" in body)
-        assertTrue("Config updated" in body)
 
         val updated = registry.get(originalId)
         assertNotNull(updated)
@@ -219,8 +219,6 @@ class RoutesTest {
             "permits": 5,
             "perSeconds": 1.0,
             "warmupSeconds": 0.0,
-            "secondaryPermits": 0,
-            "secondaryPerSeconds": 0.0,
             "requestsPerSecond": 5.0,
             "overflowMode": "queue",
             "apiTarget": "none",
@@ -323,7 +321,6 @@ class RoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
         assertTrue("\"id\":\"$originalId\"" in body)
-        assertTrue("Config updated" in body)
 
         val updated = registry.get(originalId)!!
         assertEquals(LimiterType.SMOOTH, updated.config.limiterType)
@@ -405,7 +402,7 @@ class RoutesTest {
     }
 
     @Test
-    fun `DELETE simulations clears warnings so stale warnings do not persist`() = testApplication {
+    fun `DELETE simulations prepends a Stopped entry into the status log`() = testApplication {
         val registry = SimulationRegistry()
         application { module(registry) }
 
@@ -417,13 +414,9 @@ class RoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
 
-        val warningsMarker = "id=\"$WARNINGS_ID\""
-        assertTrue(warningsMarker in body, "DELETE response must replace warnings slot")
-        val warningsFragment = body.substringAfter(warningsMarker).substringBefore("</div>")
-        assertTrue(
-            "config updated" !in warningsFragment,
-            "DELETE response must not carry config-updated warning rows",
-        )
+        assertTrue("selector #$STATUS_LOG_ID" in body, "DELETE response must target status log list")
+        assertTrue("mergeMode prepend" in body, "DELETE response must prepend the Stopped entry")
+        assertTrue("Stopped" in body, "DELETE response must include the Stopped message")
     }
 
     @Test

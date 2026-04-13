@@ -4,6 +4,7 @@ import ratelimiter.BurstyRateLimiter
 import ratelimiter.CompositeRateLimiter
 import ratelimiter.Permit
 import ratelimiter.RateLimiter
+import ratelimiter.RefundableRateLimiter
 import ratelimiter.SmoothRateLimiter
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -34,20 +35,31 @@ object LimiterFactory {
                 warmup = (config.warmupSeconds * 1000).toLong().milliseconds,
             )
             LimiterType.COMPOSITE -> {
-                val primary = BurstyRateLimiter(
-                    permits = config.permits,
-                    per = perDuration,
-                )
-                val secondary = BurstyRateLimiter(
-                    permits = requireNotNull(config.secondaryPermits) {
-                        "composite config requires secondaryPermits"
-                    },
-                    per = (requireNotNull(config.secondaryPerSeconds) {
-                        "composite config requires secondaryPerSeconds"
-                    } * 1000).toLong().milliseconds,
-                )
-                CompositeRateLimiter(primary, secondary)
+                require(config.compositeChildren.isNotEmpty()) {
+                    "composite config requires at least one child limiter"
+                }
+                val childLimiters = config.compositeChildren.map { child ->
+                    buildChildLimiter(child)
+                }
+                CompositeRateLimiter(*childLimiters.toTypedArray())
             }
+        }
+    }
+
+    private fun buildChildLimiter(child: CompositeChild): RefundableRateLimiter {
+        val childPer = (child.perSeconds * 1000).toLong().milliseconds
+        return when (child.limiterType) {
+            LimiterType.BURSTY -> BurstyRateLimiter(
+                permits = child.permits,
+                per = childPer,
+            )
+            LimiterType.SMOOTH -> SmoothRateLimiter(
+                permits = child.permits,
+                per = childPer,
+                warmup = (child.warmupSeconds * 1000).toLong().milliseconds,
+            )
+            LimiterType.COMPOSITE ->
+                throw IllegalArgumentException("nested composite children are not supported")
         }
     }
 }

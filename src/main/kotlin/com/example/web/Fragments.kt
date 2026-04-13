@@ -6,6 +6,7 @@ import com.example.simulation.SimulationHandle
 import kotlinx.html.ButtonType
 import kotlinx.html.FlowContent
 import kotlinx.html.button
+import kotlinx.html.canvas
 import kotlinx.html.classes
 import kotlinx.html.div
 import kotlinx.html.id
@@ -65,7 +66,7 @@ const val LIFECYCLE_CONTROLS_ID = "lifecycle-controls"
 const val STATUS_BADGE_ID = "status-badge"
 const val STREAM_ANCHOR_ID = "stream-anchor"
 const val LOG_LIST_ID = "log-list"
-const val WARNINGS_ID = "warnings-list"
+const val STATUS_LOG_ID = "status-log-list"
 const val PRESETS_ID = "presets-panel"
 const val CHART_MOUNT_ID = "chart-mount"
 
@@ -82,8 +83,13 @@ fun FlowContent.renderLifecycleControlsSlot() {
         id = LIFECYCLE_CONTROLS_ID
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
-            attributes["data-on-click"] = "@post('/simulations')"
-            +"Start"
+            attributes["data-on-click"] =
+                "(\$ui.step = Math.max(\$ui.step, 5), " +
+                "\$sim.id " +
+                "? @post('/simulations/' + \$sim.id + '/resume') " +
+                ": @post('/simulations'))"
+            attributes["data-attr-disabled"] = "\$sim.running"
+            +"Start!"
         }
         button(type = ButtonType.button, classes = "stop-button") {
             id = "stop-button"
@@ -106,9 +112,9 @@ fun FlowContent.renderLogListSlot() {
     }
 }
 
-fun FlowContent.renderWarningsSlot() {
-    div("warnings-list") {
-        id = WARNINGS_ID
+fun FlowContent.renderStatusLogSlot() {
+    div("status-log-list") {
+        id = STATUS_LOG_ID
     }
 }
 
@@ -125,14 +131,14 @@ fun renderLogRowFragment(entry: LogEntry): String =
         +"[${entry.timeMs}ms] status=${entry.status} latency=${entry.latencyMs}ms ${entry.body}"
     }
 
-fun renderWarningFragment(message: String): String =
-    createHTML().div("warning-row") {
+fun renderStatusLogEntryFragment(message: String): String =
+    createHTML().div("status-log-row") {
         +message
     }
 
-fun renderEmptyWarningsFragment(): String =
-    createHTML().div("warnings-list") {
-        id = WARNINGS_ID
+fun renderEmptyStatusLogFragment(): String =
+    createHTML().div("status-log-list") {
+        id = STATUS_LOG_ID
     }
 
 data class SimulationPreset(
@@ -183,23 +189,38 @@ fun FlowContent.renderPresetsPanel() {
             button(type = ButtonType.button, classes = "preset-button") {
                 id = "preset-${preset.id}"
                 attributes["data-preset"] = preset.id
-                val signalUpdates = preset.updates.entries.joinToString("; ") { (k, v) ->
+                val signalUpdates = preset.updates.entries.joinToString(", ") { (k, v) ->
                     val literal = if (v.toDoubleOrNull() != null) v else "'$v'"
                     "\$config.$k = $literal"
                 }
                 attributes["data-on-click"] =
-                    "$signalUpdates; \$sim.running && @patch('/simulations/' + \$sim.id)"
+                    "($signalUpdates, \$sim.running && @patch('/simulations/' + \$sim.id))"
                 +preset.label
             }
         }
     }
 }
 
+const val CHART_CANVAS_ID = "metrics-chart"
+
 fun FlowContent.renderChartMount() {
     div {
         id = CHART_MOUNT_ID
         classes = setOf("chart-mount")
         attributes["data-chart"] = "stats"
+        canvas {
+            id = CHART_CANVAS_ID
+        }
+        span("chart-effect") {
+            attributes["data-text"] =
+                "(window.__chartPush ? (window.__chartPush({" +
+                "running: \$sim.running, " +
+                "completed: \$stats.completed, " +
+                "acceptRate: \$stats.acceptRate, " +
+                "permitsPerSec: \$config.permits / (\$config.perSeconds || 1), " +
+                "incomingPerSec: \$config.requestsPerSecond" +
+                "}), '') : '')"
+        }
     }
 }
 
@@ -216,9 +237,13 @@ fun renderLifecycleControlsFragment(handle: SimulationHandle?): String {
         id = LIFECYCLE_CONTROLS_ID
         button(type = ButtonType.button, classes = "start-button") {
             id = "start-button"
-            attributes["data-on-click"] = "@post('/simulations')"
+            attributes["data-on-click"] =
+                "(\$ui.step = Math.max(\$ui.step, 5), " +
+                "\$sim.id " +
+                "? @post('/simulations/' + \$sim.id + '/resume') " +
+                ": @post('/simulations'))"
             if (running) attributes["disabled"] = "disabled"
-            +"Start"
+            +"Start!"
         }
         button(type = ButtonType.button, classes = "stop-button") {
             id = "stop-button"

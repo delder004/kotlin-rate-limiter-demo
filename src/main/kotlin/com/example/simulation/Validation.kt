@@ -10,13 +10,22 @@ sealed class ValidationResult {
     ) : ValidationResult()
 }
 
+const val MAX_COMPOSITE_CHILDREN = 5
+
+data class RawCompositeChild(
+    val limiterType: String? = null,
+    val permits: String? = null,
+    val perSeconds: String? = null,
+    val warmupSeconds: String? = null,
+)
+
 data class RawSimulationConfig(
     val limiterType: String? = null,
     val permits: String? = null,
     val perSeconds: String? = null,
     val warmupSeconds: String? = null,
-    val secondaryPermits: String? = null,
-    val secondaryPerSeconds: String? = null,
+    val compositeCount: String? = null,
+    val compositeChildren: List<RawCompositeChild> = emptyList(),
     val requestsPerSecond: String? = null,
     val overflowMode: String? = null,
     val apiTarget: String? = null,
@@ -43,9 +52,22 @@ object Validator {
             errors += FieldError("apiTarget", "must be one of none, catfact, jsonplaceholder")
         }
 
-        val permits = requireInt(raw.permits, "permits", errors) { it > 0 }
-        val perSeconds = requireDouble(raw.perSeconds, "perSeconds", errors) { it > 0.0 }
-        val warmupSeconds = requireDouble(raw.warmupSeconds, "warmupSeconds", errors) { it >= 0.0 }
+        // Top-level permits/perSeconds/warmupSeconds are only meaningful for
+        // non-composite limiters. For composite, the children carry their own
+        // rate config, so we accept whatever the UI sent (usually 0) and fall
+        // back to safe defaults.
+        val permits: Int?
+        val perSeconds: Double?
+        val warmupSeconds: Double?
+        if (limiterType == LimiterType.COMPOSITE) {
+            permits = raw.permits?.toIntOrNull() ?: 1
+            perSeconds = raw.perSeconds?.toDoubleOrNull() ?: 1.0
+            warmupSeconds = raw.warmupSeconds?.toDoubleOrNull() ?: 0.0
+        } else {
+            permits = requireInt(raw.permits, "permits", errors) { it > 0 }
+            perSeconds = requireDouble(raw.perSeconds, "perSeconds", errors) { it > 0.0 }
+            warmupSeconds = requireDouble(raw.warmupSeconds, "warmupSeconds", errors) { it >= 0.0 }
+        }
         val requestsPerSecond =
             requireDouble(raw.requestsPerSecond, "requestsPerSecond", errors) { it >= 0.0 }
         val serviceTimeMs = requireLong(raw.serviceTimeMs, "serviceTimeMs", errors) { it >= 0 }
@@ -55,12 +77,42 @@ object Validator {
         val workerConcurrency =
             requireInt(raw.workerConcurrency, "workerConcurrency", errors) { it > 0 }
 
-        var secondaryPermits: Int? = null
-        var secondaryPerSeconds: Double? = null
+        val compositeChildren = mutableListOf<CompositeChild>()
         if (limiterType == LimiterType.COMPOSITE) {
-            secondaryPermits = requireInt(raw.secondaryPermits, "secondaryPermits", errors) { it > 0 }
-            secondaryPerSeconds =
-                requireDouble(raw.secondaryPerSeconds, "secondaryPerSeconds", errors) { it > 0.0 }
+            val count = raw.compositeCount?.toIntOrNull()
+                ?.coerceIn(1, MAX_COMPOSITE_CHILDREN)
+                ?: raw.compositeChildren.size.coerceAtLeast(1)
+            if (raw.compositeChildren.size < count) {
+                errors += FieldError("compositeChildren", "missing child definitions")
+            }
+            val childSlice = raw.compositeChildren.take(count)
+            for ((index, child) in childSlice.withIndex()) {
+                val childType = LimiterType.fromWire(child.limiterType) ?: LimiterType.BURSTY
+                if (childType == LimiterType.COMPOSITE) {
+                    errors += FieldError("child${index}Type", "must be bursty or smooth")
+                    continue
+                }
+                val childPermits =
+                    requireInt(child.permits, "child${index}Permits", errors) { it > 0 }
+                val childPerSeconds =
+                    requireDouble(child.perSeconds, "child${index}PerSeconds", errors) { it > 0.0 }
+                val childWarmup = if (childType == LimiterType.SMOOTH) {
+                    requireDouble(child.warmupSeconds, "child${index}WarmupSeconds", errors) { it >= 0.0 }
+                } else {
+                    0.0
+                }
+                if (childPermits != null && childPerSeconds != null && childWarmup != null) {
+                    compositeChildren += CompositeChild(
+                        limiterType = childType,
+                        permits = childPermits,
+                        perSeconds = childPerSeconds,
+                        warmupSeconds = childWarmup,
+                    )
+                }
+            }
+            if (errors.none { it.field.startsWith("child") } && compositeChildren.isEmpty()) {
+                errors += FieldError("compositeChildren", "at least one child limiter is required")
+            }
         }
 
         if (errors.isNotEmpty()) return ValidationResult.Invalid(errors.toList())
@@ -71,8 +123,7 @@ object Validator {
                 permits = permits!!,
                 perSeconds = perSeconds!!,
                 warmupSeconds = warmupSeconds!!,
-                secondaryPermits = secondaryPermits,
-                secondaryPerSeconds = secondaryPerSeconds,
+                compositeChildren = compositeChildren.toList(),
                 requestsPerSecond = requestsPerSecond!!,
                 overflowMode = overflowMode!!,
                 apiTarget = apiTarget!!,

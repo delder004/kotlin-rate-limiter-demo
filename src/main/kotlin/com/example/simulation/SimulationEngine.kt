@@ -49,24 +49,28 @@ class CoroutineSimulationEngine(
     }
 
     private suspend fun runInnerLoop(handle: SimulationHandle) = coroutineScope {
-        val config = handle.config
-        val limiter = limiterFactory(config)
-        val reject = config.overflowMode == OverflowMode.REJECT
+        val initialConfig = handle.config
+        handle.limiterRef.set(limiterFactory(initialConfig))
+        val limiter = LiveEngineLimiter(handle.limiterRef)
         val startMs = timeSource()
 
+        // Seed cumulative counters from the last snapshot so resume picks up
+        // where stop left off. Queued/in-flight reset because the request
+        // channel and workers were destroyed when the engine job was cancelled.
+        val prev = handle.currentMetrics
         val queued = AtomicInteger(0)
-        val admitted = AtomicLong(0)
-        val completed = AtomicLong(0)
-        val denied = AtomicLong(0)
-        val droppedIncoming = AtomicLong(0)
+        val admitted = AtomicLong(prev.admitted)
+        val completed = AtomicLong(prev.completed)
+        val denied = AtomicLong(prev.denied)
+        val droppedIncoming = AtomicLong(prev.droppedIncoming)
         val inFlight = AtomicInteger(0)
         val latencies = ConcurrentLinkedQueue<Long>()
 
         val requestChannel = Channel<Long>(capacity = requestQueueCapacity)
 
-        val producer = launch { runProducer(config, reject, limiter, startMs, requestChannel, queued, admitted, denied, droppedIncoming, handle) }
-        val workerJobs = List(config.workerConcurrency) {
-            launch { runWorker(config, reject, limiter, startMs, requestChannel, queued, admitted, completed, inFlight, latencies, handle) }
+        val producer = launch { runProducer(limiter, startMs, requestChannel, queued, admitted, denied, droppedIncoming, handle) }
+        val workerJobs = List(initialConfig.workerConcurrency) {
+            launch { runWorker(limiter, startMs, requestChannel, queued, admitted, completed, inFlight, latencies, handle) }
         }
         val reporter = launch { runReporter(handle, startMs, queued, admitted, completed, denied, droppedIncoming, inFlight, latencies) }
 
@@ -81,8 +85,6 @@ class CoroutineSimulationEngine(
     }
 
     private suspend fun runProducer(
-        config: SimulationConfig,
-        reject: Boolean,
         limiter: EngineLimiter,
         startMs: Long,
         requestChannel: Channel<Long>,
@@ -93,8 +95,10 @@ class CoroutineSimulationEngine(
         handle: SimulationHandle,
     ) {
         var accumulator = 0.0
-        val requestsPerTick = config.requestsPerSecond * tickMs / 1000.0
         while (currentScopeActive()) {
+            val liveConfig = handle.config
+            val reject = liveConfig.overflowMode == OverflowMode.REJECT
+            val requestsPerTick = liveConfig.requestsPerSecond * tickMs / 1000.0
             accumulator += requestsPerTick
             val toEmit = accumulator.toInt()
             accumulator -= toEmit
@@ -137,8 +141,6 @@ class CoroutineSimulationEngine(
     }
 
     private suspend fun runWorker(
-        config: SimulationConfig,
-        reject: Boolean,
         limiter: EngineLimiter,
         startMs: Long,
         requestChannel: Channel<Long>,
@@ -150,15 +152,17 @@ class CoroutineSimulationEngine(
         handle: SimulationHandle,
     ) {
         for (arrivalMs in requestChannel) {
-            if (!reject) {
+            val liveConfigForAcquire = handle.config
+            if (liveConfigForAcquire.overflowMode != OverflowMode.REJECT) {
                 limiter.acquire()
                 admitted.incrementAndGet()
             }
             queued.decrementAndGet()
             inFlight.incrementAndGet()
-            val jitter = if (config.jitterMs > 0) random.nextLong(config.jitterMs + 1) else 0L
-            delay(config.serviceTimeMs + jitter)
-            val failed = config.failureRate > 0.0 && random.nextDouble() < config.failureRate
+            val liveConfig = handle.config
+            val jitter = if (liveConfig.jitterMs > 0) random.nextLong(liveConfig.jitterMs + 1) else 0L
+            delay(liveConfig.serviceTimeMs + jitter)
+            val failed = liveConfig.failureRate > 0.0 && random.nextDouble() < liveConfig.failureRate
             val completionMs = timeSource() - startMs
             val latency = completionMs - arrivalMs
             latencies.add(latency)
@@ -186,8 +190,8 @@ class CoroutineSimulationEngine(
         inFlight: AtomicInteger,
         latencies: ConcurrentLinkedQueue<Long>,
     ) {
-        var lastAdmitted = 0L
-        var lastDenied = 0L
+        var lastAdmitted = admitted.get()
+        var lastDenied = denied.get()
         while (currentScopeActive()) {
             delay(metricsIntervalMs)
             val buf = ArrayList<Long>()
@@ -232,4 +236,15 @@ class CoroutineSimulationEngine(
 
     private suspend fun currentScopeActive(): Boolean =
         kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive ?: true
+}
+
+private class LiveEngineLimiter(
+    private val ref: java.util.concurrent.atomic.AtomicReference<EngineLimiter?>,
+) : EngineLimiter {
+    override suspend fun acquire() {
+        ref.get()?.acquire()
+    }
+
+    override fun tryAcquire(): EnginePermit =
+        ref.get()?.tryAcquire() ?: EnginePermit.Granted
 }

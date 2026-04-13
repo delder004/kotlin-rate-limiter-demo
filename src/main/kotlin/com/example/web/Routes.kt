@@ -1,5 +1,7 @@
 package com.example.web
 
+import com.example.simulation.MAX_COMPOSITE_CHILDREN
+import com.example.simulation.RawCompositeChild
 import com.example.simulation.RawSimulationConfig
 import com.example.simulation.SimulationRegistry
 import com.example.simulation.ValidationResult
@@ -43,7 +45,8 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
                         .clearFormErrors()
                         .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning)
                         .patchLifecycleControls(handle)
-                        .patchStreamAnchor(handle),
+                        .patchStreamAnchor(handle)
+                        .prependStatusLogEntry("Started"),
                 )
             }
         }
@@ -116,11 +119,12 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
                 when (val updateResult = registry.update(id, result.config)) {
                     is SimulationRegistry.UpdateResult.Updated -> {
                         val handle = updateResult.handle
+                        // The "Config Updated: ..." status log entry is
+                        // published by the registry and streams in via SSE.
                         call.respondDatastar(
                             DatastarResponse()
                                 .clearFormErrors()
-                                .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning)
-                                .mergeFragment(renderWarningFragment("Config updated")),
+                                .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning),
                         )
                     }
                     SimulationRegistry.UpdateResult.NotFound ->
@@ -143,13 +147,45 @@ fun Route.registerRoutes(registry: SimulationRegistry) {
             call.respond(HttpStatusCode.NotFound, "simulation $id not found")
             return@delete
         }
+        // Keep sim.id so a subsequent Start click can resume this handle
+        // instead of creating a brand new simulation.
         call.respondDatastar(
             DatastarResponse()
-                .patchSimLifecycle(null, "idle", running = false)
-                .patchLifecycleControls(null)
+                .patchSimLifecycle(stopped.id, "stopped", running = false)
+                .patchLifecycleControls(stopped)
                 .patchStreamAnchor(null)
-                .mergeFragment(renderEmptyWarningsFragment()),
+                .prependStatusLogEntry("Stopped"),
         )
+    }
+
+    post("/simulations/{id}/resume") {
+        val id = call.parameters["id"]
+        if (id.isNullOrBlank()) {
+            call.respond(HttpStatusCode.BadRequest, "missing id")
+            return@post
+        }
+        when (val result = registry.resume(id)) {
+            SimulationRegistry.ResumeResult.NotFound ->
+                call.respond(HttpStatusCode.NotFound, "simulation $id not found")
+            is SimulationRegistry.ResumeResult.AlreadyRunning -> {
+                val handle = result.handle
+                call.respondDatastar(
+                    DatastarResponse()
+                        .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning),
+                )
+            }
+            is SimulationRegistry.ResumeResult.Resumed -> {
+                val handle = result.handle
+                call.respondDatastar(
+                    DatastarResponse()
+                        .clearFormErrors()
+                        .patchSimLifecycle(handle.id, handle.status.wire, handle.isRunning)
+                        .patchLifecycleControls(handle)
+                        .patchStreamAnchor(handle)
+                        .prependStatusLogEntry("Resumed"),
+                )
+            }
+        }
     }
 }
 
@@ -160,13 +196,22 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
     return when {
         contentType.match(ContentType.Application.FormUrlEncoded) -> {
             val params = receiveParameters()
+            val count = params["compositeCount"]?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
+            val children = (0 until count).map { i ->
+                RawCompositeChild(
+                    limiterType = params["child${i}Type"],
+                    permits = params["child${i}Permits"],
+                    perSeconds = params["child${i}PerSeconds"],
+                    warmupSeconds = params["child${i}WarmupSeconds"],
+                )
+            }
             RawSimulationConfig(
                 limiterType = params["limiterType"],
                 permits = params["permits"],
                 perSeconds = params["perSeconds"],
                 warmupSeconds = params["warmupSeconds"],
-                secondaryPermits = params["secondaryPermits"],
-                secondaryPerSeconds = params["secondaryPerSeconds"],
+                compositeCount = params["compositeCount"],
+                compositeChildren = children,
                 requestsPerSecond = params["requestsPerSecond"],
                 overflowMode = params["overflowMode"],
                 apiTarget = params["apiTarget"],
@@ -183,13 +228,22 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
                 ?: (root as? JsonObject)
                 ?: JsonObject(emptyMap())
             fun field(name: String): String? = config[name]?.asScalarString()
+            val count = field("compositeCount")?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
+            val children = (0 until count).map { i ->
+                RawCompositeChild(
+                    limiterType = field("child${i}Type"),
+                    permits = field("child${i}Permits"),
+                    perSeconds = field("child${i}PerSeconds"),
+                    warmupSeconds = field("child${i}WarmupSeconds"),
+                )
+            }
             RawSimulationConfig(
                 limiterType = field("limiterType"),
                 permits = field("permits"),
                 perSeconds = field("perSeconds"),
                 warmupSeconds = field("warmupSeconds"),
-                secondaryPermits = field("secondaryPermits"),
-                secondaryPerSeconds = field("secondaryPerSeconds"),
+                compositeCount = field("compositeCount"),
+                compositeChildren = children,
                 requestsPerSecond = field("requestsPerSecond"),
                 overflowMode = field("overflowMode"),
                 apiTarget = field("apiTarget"),
@@ -201,13 +255,22 @@ private suspend fun ApplicationCall.receiveRawConfig(): RawSimulationConfig {
         }
         else -> {
             val q = request.queryParameters
+            val count = q["compositeCount"]?.toIntOrNull()?.coerceIn(0, MAX_COMPOSITE_CHILDREN) ?: 0
+            val children = (0 until count).map { i ->
+                RawCompositeChild(
+                    limiterType = q["child${i}Type"],
+                    permits = q["child${i}Permits"],
+                    perSeconds = q["child${i}PerSeconds"],
+                    warmupSeconds = q["child${i}WarmupSeconds"],
+                )
+            }
             RawSimulationConfig(
                 limiterType = q["limiterType"],
                 permits = q["permits"],
                 perSeconds = q["perSeconds"],
                 warmupSeconds = q["warmupSeconds"],
-                secondaryPermits = q["secondaryPermits"],
-                secondaryPerSeconds = q["secondaryPerSeconds"],
+                compositeCount = q["compositeCount"],
+                compositeChildren = children,
                 requestsPerSecond = q["requestsPerSecond"],
                 overflowMode = q["overflowMode"],
                 apiTarget = q["apiTarget"],
