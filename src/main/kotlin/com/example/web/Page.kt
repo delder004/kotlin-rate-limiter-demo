@@ -1186,14 +1186,6 @@ fun HTML.renderPageShell() {
                 id = "run-panels"
 
                 section {
-                    id = "status-panel"
-                    div("running-bar") {
-                        renderStatusBadgeSlot()
-                        renderLifecycleControlsSlot()
-                    }
-                }
-
-                section {
                     id = "chart-panel"
                     h2 { +"Chart" }
                     renderChartMount()
@@ -1288,6 +1280,14 @@ fun HTML.renderPageShell() {
                                 +"0"
                             }
                         }
+                    }
+                }
+
+                section {
+                    id = "status-panel"
+                    div("running-bar") {
+                        renderStatusBadgeSlot()
+                        renderLifecycleControlsSlot()
                     }
                 }
             }
